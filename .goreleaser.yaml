@@ -31,6 +31,7 @@ nfpms:
     homepage: "https://github.com/toinet-lab/certflow"
     license: MIT
     bindir: /usr/bin
+    file_name_template: "{{ .ConventionalFileName }}"
 
 checksum:
   name_template: "checksums.txt"
