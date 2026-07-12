@@ -72,6 +72,7 @@ func main() {
 		}
 	} else {
 		printTable(os.Stdout, results, *warn)
+		printSummary(os.Stdout, results, *warn)
 	}
 
 	if *failUnder > 0 {
@@ -182,6 +183,31 @@ func printTable(w io.Writer, results []scan.Result, warn int) {
 		)
 	}
 	tw.Flush()
+}
+
+// printSummary writes a one-line tally of the results, e.g.
+//
+//	6 targets: 3 OK, 1 WARN, 1 EXPIRED, 1 ERROR
+//
+// It is meant for cron and monitoring use. Errors are counted before status()
+// is consulted, mirroring printTable: an errored result has DaysLeft == 0 and
+// would otherwise be miscounted as WARN.
+func printSummary(w io.Writer, results []scan.Result, warn int) {
+	var ok, warnN, expired, errN int
+	for _, r := range results {
+		switch {
+		case r.Error != "":
+			errN++
+		case status(r.DaysLeft, warn) == "EXPIRED":
+			expired++
+		case status(r.DaysLeft, warn) == "WARN":
+			warnN++
+		default:
+			ok++
+		}
+	}
+	fmt.Fprintf(w, "\n%d targets: %d OK, %d WARN, %d EXPIRED, %d ERROR\n",
+		len(results), ok, warnN, expired, errN)
 }
 
 func status(daysLeft, warn int) string {
