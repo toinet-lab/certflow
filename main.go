@@ -30,6 +30,9 @@ import (
 	"github.com/toinet-lab/certflow/internal/scan"
 )
 
+// version is overwritten at build time by GoReleaser via -ldflags.
+var version = "dev"
+
 func main() {
 	var (
 		file        = flag.String("file", "", "path to a file with one host:port per line (# lines are ignored)")
@@ -38,8 +41,14 @@ func main() {
 		concurrency = flag.Int("concurrency", 20, "number of concurrent probes")
 		asJSON      = flag.Bool("json", false, "output results as JSON instead of a table")
 		failUnder   = flag.Int("fail-under", 0, "exit with code 2 if any certificate expires within this many days (0 = never fail)")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("certflow", version)
+		return
+	}
 
 	targets, err := gatherTargets(*file, flag.Args())
 	if err != nil {
