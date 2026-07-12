@@ -10,8 +10,6 @@ they expire?* certflow answers that — safely.
 > writes to any system and never handles private keys. Automated issuance and
 > distribution come in later phases (see the roadmap).
 
-[日本語のはじめ方ガイドはこちら → START-HERE-ja.md](START-HERE-ja.md)
-
 ## Quick start
 
 Requires [Go](https://go.dev/dl/) 1.22 or newer.
@@ -70,4 +68,4 @@ information for details.
 
 ## License
 
-[MIT](LICENSE) © 2026 YOUR NAME
+[MIT](LICENSE) © 2026 Toinet
