@@ -1,0 +1,130 @@
+name: guardrails
+
+# Runs on every push and pull request. This is the safety net that every
+# change — human or AI — must pass before it is reviewed and merged.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Build, format, vet, test. Blocking: code must compile and pass tests.
+  # ---------------------------------------------------------------------------
+  build-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: gofmt (fail if unformatted)
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: go build
+        run: go build -o certflow .
+
+  # ---------------------------------------------------------------------------
+  # 2. CodeQL — static security analysis (SAST). Reports to the Security tab.
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+
+  # ---------------------------------------------------------------------------
+  # 3. ScanOSS — copyright / license / snippet provenance.
+  #    The "copyleft" policy FAILS the check if any copyleft-licensed code or
+  #    snippet is detected. This is the guard against accidental GPL/AGPL
+  #    (e.g. acme.sh) code entering an MIT project.
+  # ---------------------------------------------------------------------------
+  scanoss:
+    name: license & snippet scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SCANOSS
+        uses: scanoss/code-scan-action@v1
+        with:
+          policies: copyleft
+
+  # ---------------------------------------------------------------------------
+  # 4. Trivy — dependency vulnerabilities, misconfig, and secret patterns.
+  #    Report-only for now (does not block); review findings in the run log.
+  # ---------------------------------------------------------------------------
+  trivy:
+    name: trivy scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          format: table
+          exit-code: "0"   # report only; change to "1" to block on findings
+
+  # ---------------------------------------------------------------------------
+  # 5. govulncheck — Go vulnerability database check. Report-only.
+  # ---------------------------------------------------------------------------
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: "1.22"
+
+  # ---------------------------------------------------------------------------
+  # 6. Secret scanning (gitleaks). Report-only; GitHub's native secret scanning
+  #    and push protection (Settings > Code security) are the primary defense.
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+
+  # ---------------------------------------------------------------------------
+  # 7. SBOM — software bill of materials (SPDX). Uploaded as a build artifact
+  #    so every build has a record of what went into it.
+  # ---------------------------------------------------------------------------
+  sbom:
+    name: sbom
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          artifact-name: certflow.spdx.json

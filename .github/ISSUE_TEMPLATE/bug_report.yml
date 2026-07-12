@@ -1,0 +1,29 @@
+name: Bug report
+description: Report something that is not working
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, and what did you expect vs. see?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command you ran (remove any private hostnames).
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: certflow version / commit
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: "⚠️ Never paste private keys, secrets, or internal hostnames you want to keep confidential."

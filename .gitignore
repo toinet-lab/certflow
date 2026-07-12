@@ -1,0 +1,22 @@
+# Compiled binary
+/certflow
+/certflow.exe
+*.exe
+*.test
+*.out
+
+# Your own host list (keep private; hosts.example.txt is the template)
+hosts.txt
+
+# Build / scan / SBOM artifacts
+/dist/
+*.spdx.json
+*.cdx.json
+results.json
+scanoss-results.json
+scanoss.json.bak
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
