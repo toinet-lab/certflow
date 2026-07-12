@@ -20,7 +20,7 @@ jobs:
     name: build & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
@@ -43,7 +43,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v4
         with:
           languages: go
@@ -64,7 +64,7 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run SCANOSS
         uses: scanoss/code-scan-action@v1
         with:
@@ -78,7 +78,7 @@ jobs:
     name: trivy scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run Trivy (filesystem)
         uses: aquasecurity/trivy-action@master
         with:
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: golang/govulncheck-action@v1
         with:
           go-version-input: "1.25"
@@ -112,7 +112,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -127,7 +127,7 @@ jobs:
     name: sbom
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
