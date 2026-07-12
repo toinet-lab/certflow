@@ -49,7 +49,22 @@ func Probe(ctx context.Context, target string, timeout time.Duration) Result {
 	dialer := tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: timeout},
 		Config: &tls.Config{
-			InsecureSkipVerify: true, // inventory only: inspect, do not trust
+			// INTENTIONAL, and central to what this tool does.
+			//
+			// certflow INSPECTS certificates; it never TRUSTS them. Verification
+			// must be disabled in order to inventory expired, self-signed, and
+			// hostname-mismatched certificates -- which is precisely the problem
+			// the tool exists to solve. Enabling verification here would make the
+			// connection fail on exactly the certificates the operator most needs
+			// to find.
+			//
+			// This is safe because the connection is read-only: we read the leaf
+			// certificate the server presents, report on it, and close. Nothing is
+			// sent, nothing is trusted, no action is taken on the connection.
+			//
+			// DO NOT copy this pattern into any code that trusts or acts on a
+			// connection (e.g. Phase 1 ACME issuance). See AGENTS.md.
+			InsecureSkipVerify: true, //nolint:gosec // G402: see comment above
 			ServerName:         host,
 		},
 	}
