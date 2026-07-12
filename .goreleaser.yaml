@@ -1,0 +1,45 @@
+# GoReleaser v2. Validate locally with: goreleaser check
+# Builds one static binary and packages it for RHEL (.rpm), Ubuntu/Debian
+# (.deb), and Alpine (.apk) in a single run.
+version: 2
+project_name: certflow
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: certflow
+    main: .
+    binary: certflow
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - package_name: certflow
+    formats: [deb, rpm, apk]
+    maintainer: "Toinet <302558825+toinet-lab@users.noreply.github.com>"
+    description: "Read-only TLS certificate inventory tool."
+    homepage: "https://github.com/toinet-lab/certflow"
+    license: MIT
+    bindir: /usr/bin
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+
+release:
+  github:
+    owner: toinet-lab
+    name: certflow
