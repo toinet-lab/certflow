@@ -2,10 +2,61 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/toinet-lab/certflow/internal/scan"
 )
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestPrintTable(t *testing.T) {
+	notAfter := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	results := []scan.Result{
+		{
+			Target: "good.example.com", DaysLeft: 90, NotAfter: notAfter,
+			Issuer: "CN=Test CA", Subject: "CN=good.example.com",
+			Trusted: boolPtr(true), TLSVersion: "TLS1.3",
+		},
+		{
+			Target: "bad.example.com", DaysLeft: 5, NotAfter: notAfter,
+			Issuer: "CN=bad.example.com", Subject: "CN=bad.example.com",
+			Trusted: boolPtr(false), UntrustedReasons: []string{"self_signed"}, TLSVersion: "TLS1.2",
+		},
+		{Target: "dead.example.com", Error: "connection refused"},
+	}
+
+	var buf bytes.Buffer
+	printTable(&buf, results, 30)
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	header := lines[0]
+	for _, col := range []string{"STATUS", "TRUST", "NEGOTIATED", "TARGET", "DAYS_LEFT", "NOT_AFTER", "ISSUER"} {
+		if !strings.Contains(header, col) {
+			t.Errorf("header missing column %q: %q", col, header)
+		}
+	}
+	if strings.Contains(header, "SUBJECT") {
+		t.Errorf("header should not contain SUBJECT: %q", header)
+	}
+
+	// SUBJECT values must not leak into the table body.
+	if strings.Contains(out, "CN=good.example.com") {
+		t.Errorf("table should not render SUBJECT, got:\n%s", out)
+	}
+
+	if fields := strings.Fields(lines[1]); fields[0] != "OK" || fields[1] != "yes" || fields[2] != "TLS1.3" {
+		t.Errorf("good row = %v, want STATUS=OK TRUST=yes NEGOTIATED=TLS1.3", fields)
+	}
+	if fields := strings.Fields(lines[2]); fields[0] != "WARN" || fields[1] != "no" || fields[2] != "TLS1.2" {
+		t.Errorf("bad row = %v, want STATUS=WARN TRUST=no NEGOTIATED=TLS1.2", fields)
+	}
+	if fields := strings.Fields(lines[3]); fields[0] != "ERROR" || fields[1] != "-" || fields[2] != "-" {
+		t.Errorf("error row = %v, want STATUS=ERROR TRUST=- NEGOTIATED=-", fields)
+	}
+}
 
 func TestPrintSummary(t *testing.T) {
 	tests := []struct {

@@ -43,6 +43,7 @@ func main() {
 		failUnder   = flag.Int("fail-under", 0, "exit with code 2 if any certificate expires within this many days (0 = never fail)")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
+	flag.Usage = usage
 	flag.Parse()
 
 	if *showVersion {
@@ -91,6 +92,17 @@ func main() {
 			}
 		}
 	}
+}
+
+// usage prints the standard flag help plus a note on the limits of the
+// NEGOTIATED column, which reports only the version this run agreed on.
+func usage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
+	flag.PrintDefaults()
+	fmt.Fprintln(out, "\nNote: NEGOTIATED is the TLS version certflow agreed on for this")
+	fmt.Fprintln(out, "connection, not the server's full supported range. Go disables")
+	fmt.Fprintln(out, "TLS 1.0/1.1 by default, so those are never negotiated here.")
 }
 
 // gatherTargets collects targets from CLI args and an optional file, skipping
@@ -176,22 +188,33 @@ func probeAll(targets []string, timeout time.Duration, concurrency int) []scan.R
 
 func printTable(w io.Writer, results []scan.Result, warn int) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "STATUS\tTARGET\tDAYS_LEFT\tNOT_AFTER\tISSUER\tSUBJECT")
+	fmt.Fprintln(tw, "STATUS\tTRUST\tNEGOTIATED\tTARGET\tDAYS_LEFT\tNOT_AFTER\tISSUER")
 	for _, r := range results {
 		if r.Error != "" {
-			fmt.Fprintf(tw, "ERROR\t%s\t-\t-\t-\t%s\n", r.Target, r.Error)
+			fmt.Fprintf(tw, "ERROR\t-\t-\t%s\t-\t-\t%s\n", r.Target, r.Error)
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			status(r.DaysLeft, warn),
+			trustLabel(r),
+			r.TLSVersion,
 			r.Target,
 			r.DaysLeft,
 			r.NotAfter.Format("2006-01-02"),
 			shorten(r.Issuer, 40),
-			shorten(r.Subject, 40),
 		)
 	}
 	tw.Flush()
+}
+
+// trustLabel renders the TRUST column: yes when a verifying client would trust
+// the certificate, no otherwise. Trusted is only nil on errored results, which
+// are handled separately, so nil here defensively renders as no.
+func trustLabel(r scan.Result) string {
+	if r.Trusted != nil && *r.Trusted {
+		return "yes"
+	}
+	return "no"
 }
 
 // printSummary writes a one-line tally of the results, e.g.

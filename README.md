@@ -41,6 +41,67 @@ Copy `hosts.example.txt` to `hosts.txt` and edit it for your environment.
 | `-json`         | `false` | Output JSON instead of a table                             |
 | `-fail-under`   | `0`     | Exit code 2 if any cert expires within N days (0 = off)    |
 
+### Output columns
+
+The table shows two axes that are deliberately kept separate:
+
+| Column       | Meaning                                                            |
+| ------------ | ----------------------------------------------------------------- |
+| `STATUS`     | Expiry status: `OK` / `WARN` / `EXPIRED` (and `ERROR` on failure) |
+| `TRUST`      | `yes`/`no` — whether a verifying client would trust the cert      |
+| `NEGOTIATED` | The TLS version certflow negotiated (e.g. `TLS1.3`)               |
+
+`STATUS` (expiry) and `TRUST` (trust) are **independent**: a certificate can be
+valid-for-weeks yet untrusted (e.g. self-signed), or trusted yet expiring soon.
+
+When `TRUST` is `no`, the JSON output records machine-readable reasons in
+`untrusted_reasons`. Each is checked independently, so several can appear at
+once (e.g. `["self_signed","expired"]`):
+
+| Reason              | Meaning                                                              |
+| ------------------- | ------------------------------------------------------------------- |
+| `self_signed`       | Issuer == Subject **and** the cert verifies its own signature       |
+| `expired`           | Past its `not_after`                                                 |
+| `hostname_mismatch` | The target host is not covered by the certificate                   |
+| `untrusted_chain`   | Could not build a chain to a trusted root in the local trust store  |
+
+`untrusted_chain` does not distinguish "a missing intermediate" from "an unknown
+root". Use the JSON `chain_length` field to tell them apart: `chain_length: 1`
+means the server sent only the leaf, which strongly suggests a missing
+intermediate. certflow does **not** fetch missing intermediates (no AIA
+fetching) — that would mean connecting out to arbitrary URLs, which is outside
+the scope of a read-only inventory.
+
+The connection itself is still made **without** verification (see
+[Security](#security)); trust is assessed afterwards against the fetched
+certificate. That is what lets certflow inventory the expired, self-signed, and
+mismatched certificates you most need to find.
+
+### JSON fields
+
+JSON output (`-json`) includes everything in the table plus `subject`, `sans`,
+`serial`, `not_before`, and:
+
+| Field               | Notes                                                          |
+| ------------------- | -------------------------------------------------------------- |
+| `trusted`           | `true`/`false`; omitted when a connection error made it undeterminable |
+| `untrusted_reasons` | Present only when `trusted` is `false`                         |
+| `tls_version`       | Same value as the `NEGOTIATED` column                          |
+| `cipher_suite`      | Negotiated cipher suite (JSON only — too long for the table)   |
+| `chain_length`      | Number of certificates the server presented                    |
+
+### Limitations
+
+- **`NEGOTIATED` is a single agreement, not a capability report.** It is the TLS
+  version this one handshake settled on, not the server's full supported range.
+  Go disables TLS 1.0/1.1 by default, so those never appear here even if the
+  server would accept them.
+- **No AIA fetching.** Missing intermediates are reported, not fetched.
+
+> **Note (breaking change from earlier `v0.x`):** the `SUBJECT` column has been
+> removed from the table to make room for `TRUST` and `NEGOTIATED`. The
+> `subject` field is still present in `-json` output.
+
 ## Roadmap
 
 | Phase | Scope                                                    | Risk |
