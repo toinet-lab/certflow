@@ -115,8 +115,17 @@ func gatherTargets(file string, args []string) ([]string, error) {
 	var targets []string
 
 	add := func(t string) {
+		// Strip inline comments: everything from the first '#' onward. This also
+		// covers whole-line comments, which become empty and are skipped below.
+		// Without cutting here, "host:25   # note" reaches ParseTarget as
+		// "host:25   " and fails with "invalid port" — the trailing spaces are
+		// part of the token. hosts.example.txt uses inline comments, so this is
+		// the difference between the shipped example working and not.
+		if i := strings.IndexByte(t, '#'); i >= 0 {
+			t = t[:i]
+		}
 		t = strings.TrimSpace(t)
-		if t == "" || strings.HasPrefix(t, "#") {
+		if t == "" {
 			return
 		}
 		if !seen[t] {
