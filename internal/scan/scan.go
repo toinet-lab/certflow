@@ -7,8 +7,10 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"sort"
@@ -28,7 +30,18 @@ type Result struct {
 	NotAfter  time.Time `json:"not_after"`
 	DaysLeft  int       `json:"days_left"`
 	Serial    string    `json:"serial"`
-	Error     string    `json:"error,omitempty"`
+
+	// Trust and connection details. These describe whether a verifying client
+	// would trust the certificate (an axis orthogonal to expiry) and what TLS
+	// parameters certflow negotiated. They are computed from the certificate the
+	// server presented; the connection itself stays unverified (see Probe).
+	Trusted          *bool    `json:"trusted,omitempty"` // nil = undetermined (connection failed)
+	UntrustedReasons []string `json:"untrusted_reasons,omitempty"`
+	TLSVersion       string   `json:"tls_version,omitempty"`
+	CipherSuite      string   `json:"cipher_suite,omitempty"`
+	ChainLength      int      `json:"chain_length"`
+
+	Error string `json:"error,omitempty"`
 }
 
 // Probe connects to target over TLS and returns the leaf certificate details.
@@ -100,7 +113,91 @@ func Probe(ctx context.Context, target string, timeout time.Duration) Result {
 	sort.Strings(sans)
 	r.SANs = sans
 
+	// Record the negotiated TLS parameters. NEGOTIATED is the version this
+	// single handshake agreed on, not the server's full supported range.
+	state := tlsConn.ConnectionState()
+	r.TLSVersion = tlsVersionName(state.Version)
+	r.CipherSuite = tls.CipherSuiteName(state.CipherSuite)
+	r.ChainLength = len(certs)
+
+	// Assess trust against the local system root store. This is done on the
+	// certificate we already fetched -- the connection stays unverified so that
+	// expired/self-signed certs are still inventoried. nil roots => system pool.
+	reasons := verifyTrust(leaf, certs, host, nil, time.Now())
+	trusted := len(reasons) == 0
+	r.Trusted = &trusted
+	r.UntrustedReasons = reasons
+
 	return r
+}
+
+// verifyTrust reports why a verifying client would not trust leaf, as a
+// stable-ordered list of machine-readable reasons. An empty slice means the
+// certificate is trusted. Each reason is checked independently rather than
+// relying on x509.Verify (which returns only the first error), so overlapping
+// problems (e.g. expired and self-signed) are all reported.
+//
+// roots selects the trust anchors; pass nil to use the system pool. It is a
+// parameter so tests can inject a controlled root set.
+func verifyTrust(leaf *x509.Certificate, chain []*x509.Certificate, host string, roots *x509.CertPool, now time.Time) []string {
+	var reasons []string
+
+	// self_signed: Issuer==Subject is not sufficient on its own (it is trivially
+	// forgeable), so also require the certificate's signature to verify against
+	// its own public key. We use CheckSignature rather than CheckSignatureFrom:
+	// the latter additionally demands the signer be a CA (IsCA + KeyUsageCertSign),
+	// but real self-signed *server leaves* are usually not CAs, so it would miss
+	// exactly the certs we want to flag. When self-signed we do not additionally
+	// report untrusted_chain.
+	selfSigned := bytes.Equal(leaf.RawIssuer, leaf.RawSubject) &&
+		leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature) == nil
+	if selfSigned {
+		reasons = append(reasons, "self_signed")
+	}
+
+	if now.After(leaf.NotAfter) {
+		reasons = append(reasons, "expired")
+	}
+
+	if leaf.VerifyHostname(host) != nil {
+		reasons = append(reasons, "hostname_mismatch")
+	}
+
+	if !selfSigned {
+		intermediates := x509.NewCertPool()
+		for _, c := range chain[1:] {
+			intermediates.AddCert(c)
+		}
+		// Verify chain reachability only. Hostname and expiry are checked above,
+		// so we set CurrentTime inside the leaf's validity window -- otherwise an
+		// expired leaf would mask whether the chain reaches a trusted root, which
+		// is the distinction chain_length is meant to help the user make.
+		if _, err := leaf.Verify(x509.VerifyOptions{
+			Roots:         roots,
+			Intermediates: intermediates,
+			CurrentTime:   leaf.NotBefore,
+		}); err != nil {
+			reasons = append(reasons, "untrusted_chain")
+		}
+	}
+
+	return reasons
+}
+
+// tlsVersionName renders a crypto/tls version constant as a short label.
+func tlsVersionName(v uint16) string {
+	switch v {
+	case tls.VersionTLS13:
+		return "TLS1.3"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	default:
+		return fmt.Sprintf("0x%04x", v)
+	}
 }
 
 // splitHostPort normalises a target into host and port, defaulting to 443.
