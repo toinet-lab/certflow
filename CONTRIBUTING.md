@@ -48,3 +48,7 @@ Add a `Signed-off-by` line to certify you have the right to submit the code
 ```sh
 git commit -s -m "your message"
 ```
+
+## Setup
+
+    ./scripts/install-hooks.sh   # once per clone

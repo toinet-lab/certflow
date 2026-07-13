@@ -105,9 +105,11 @@ jobs:
   #    and push protection (Settings > Code security) are the primary defense.
   # ---------------------------------------------------------------------------
   gitleaks:
-    name: gitleaks
+    name: secret scan
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # BLOCKING, deliberately. This repository is public: a leaked credential or
+    # internal hostname cannot be un-leaked by a later commit. Reporting is not
+    # enough -- this has to stop the push.
     permissions:
       contents: read
       pull-requests: read
