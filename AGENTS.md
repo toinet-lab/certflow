@@ -120,6 +120,13 @@ implementation detail.
 3. **No network writes.** Read-only means read-only: no POST/PUT/DELETE, no SSH,
    no writes on remote hosts.
 
+These rules are enforced mechanically, not left to memory:
+
+- `.git/hooks/pre-commit` blocks them at commit time
+  (install once per clone: `./scripts/install-hooks.sh`)
+- the `secret scan` CI job (gitleaks) scans the **full history** on every push,
+  and **blocks** — this repository is public, so reporting is not enough
+
 ## Workflow
 
 `main` is protected. Pull requests are mandatory and enforced by GitHub — this is

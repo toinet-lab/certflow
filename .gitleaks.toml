@@ -1,0 +1,38 @@
+# gitleaks configuration.
+#
+# Extends the default ruleset (API keys, tokens, private keys) with the rules
+# that actually matter for this project: no internal hostnames or addresses.
+#
+# This repository is PUBLIC. Anything committed here is visible immediately, and
+# the history is visible forever. A hostname committed today cannot be removed
+# later by deleting the file.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "internal-ipv4"
+description = "RFC1918 private address (do not commit internal IPs)"
+regex = '''\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'''
+tags = ["internal", "hostname"]
+
+[[rules]]
+id = "internal-hostname"
+description = "Internal hostname (use example.co.jp in code, tests, and docs)"
+regex = '''(?i)\b(?:dev-alma\S*|ansible-ctl\S*|[a-z0-9-]+\.(?:local|internal|lan|corp))\b'''
+tags = ["internal", "hostname"]
+
+[allowlist]
+description = "Reserved example ranges, and the files that define these rules"
+paths = [
+    # These files necessarily contain the patterns they look for.
+    '''\.gitleaks\.toml$''',
+    '''scripts/pre-commit\.sh$''',
+    '''AGENTS\.md$''',
+]
+regexes = [
+    # RFC 5737 / RFC 2606 reserved for documentation. Cannot belong to anyone.
+    '''192\.0\.2\.\d{1,3}''',
+    '''example\.(?:com|org|co\.jp)''',
+    # Loopback in tests is not an internal address.
+    '''127\.0\.0\.1''',
+]
