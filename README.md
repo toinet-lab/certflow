@@ -1,132 +1,231 @@
 # certflow
 
-A small, read-only tool for taking inventory of your TLS certificates and
-seeing when they expire. As certificate lifetimes shrink, the first question
-every operator needs to answer is: *which certificates do I have, and when do
-they expire?* certflow answers that — safely.
+**Find the certificate on your mail server before it expires.**
 
-> **Phase 0 scope.** This release only *reads*. It opens a TLS connection,
-> inspects the certificate the server presents, and reports on it. It never
-> writes to any system and never handles private keys. Automated issuance and
-> distribution come in later phases (see the roadmap).
+Certificate monitoring looks at HTTPS. Your web certificates are probably fine —
+something is watching them. Meanwhile the certificate on your SMTP relay, your
+IMAP server, or your LDAP directory quietly expires, and nothing warns you.
+A mail server does not show a browser warning. It just stops delivering mail,
+and you spend the afternoon working out why.
 
-## Quick start
+certflow inventories the TLS certificates across your whole estate — **HTTPS,
+SMTP+STARTTLS, SMTPS, IMAP, IMAPS, POP3, POP3S, LDAPS** — and tells you when
+they expire.
 
-Requires [Go](https://go.dev/dl/) 1.22 or newer.
-
-```sh
-# Build
-go build -o certflow .
-
-# Check a few endpoints
-./certflow example.com example.org:8443
-
-# Check a list, warn under 21 days, machine-readable output
-./certflow -file hosts.txt -warn 21 -json
-
-# For monitoring/cron: exit code 2 if any cert expires within 14 days
-./certflow -file hosts.txt -fail-under 14
+```console
+$ certflow smtp://smtp.example.co.jp:587 imaps://imap.example.co.jp example.co.jp
+STATUS  TRUST  SERVICE  NEGOTIATED  TARGET                  DAYS_LEFT  NOT_AFTER   ISSUER
+OK      yes    smtp     TLS1.3      smtp.example.co.jp:587  67         2026-09-18  CN=E5,O=Let's Encrypt,C=US
+OK      yes    tls      TLS1.3      imap.example.co.jp:993  67         2026-09-18  CN=E5,O=Let's Encrypt,C=US
+OK      yes    tls      TLS1.3      example.co.jp:443       48         2026-08-30  CN=E5,O=Let's Encrypt,C=US
+3 targets: 3 OK, 0 WARN, 0 EXPIRED, 0 ERROR
 ```
 
-Copy `hosts.example.txt` to `hosts.txt` and edit it for your environment.
+**certflow only reads.** It never writes to a remote system, never generates or
+handles private keys, and never modifies anything. It opens a connection, reads
+the certificate the server presents, reports on it, and closes.
 
-### Options
+## Install
 
-| Flag            | Default | Description                                                |
-| --------------- | ------- | ---------------------------------------------------------- |
-| `-file`         | (none)  | File with one `host` or `host:port` per line (`#` = skip)  |
-| `-warn`         | `30`    | Days-left threshold to mark a certificate `WARN`           |
-| `-timeout`      | `10s`   | TLS dial timeout per target                                |
-| `-concurrency`  | `20`    | Number of concurrent probes                                |
-| `-json`         | `false` | Output JSON instead of a table                             |
-| `-fail-under`   | `0`     | Exit code 2 if any cert expires within N days (0 = off)    |
+Download from [Releases](https://github.com/toinet-lab/certflow/releases).
 
-### Output columns
+```sh
+# RHEL / AlmaLinux / Rocky
+sudo dnf install ./certflow-0.2.0-1.x86_64.rpm
 
-The table shows two axes that are deliberately kept separate:
+# Ubuntu / Debian
+sudo dpkg -i ./certflow_0.2.0_amd64.deb
 
-| Column       | Meaning                                                            |
-| ------------ | ----------------------------------------------------------------- |
-| `STATUS`     | Expiry status: `OK` / `WARN` / `EXPIRED` (and `ERROR` on failure) |
-| `TRUST`      | `yes`/`no` — whether a verifying client would trust the cert      |
-| `NEGOTIATED` | The TLS version certflow negotiated (e.g. `TLS1.3`)               |
+# Alpine
+sudo apk add --allow-untrusted ./certflow_0.2.0_x86_64.apk
+```
 
-`STATUS` (expiry) and `TRUST` (trust) are **independent**: a certificate can be
-valid-for-weeks yet untrusted (e.g. self-signed), or trusted yet expiring soon.
+Or build from source (Go 1.25+):
 
-When `TRUST` is `no`, the JSON output records machine-readable reasons in
-`untrusted_reasons`. Each is checked independently, so several can appear at
-once (e.g. `["self_signed","expired"]`):
+```sh
+go install github.com/toinet-lab/certflow@latest
+```
 
-| Reason              | Meaning                                                              |
-| ------------------- | ------------------------------------------------------------------- |
-| `self_signed`       | Issuer == Subject **and** the cert verifies its own signature       |
-| `expired`           | Past its `not_after`                                                 |
-| `hostname_mismatch` | The target host is not covered by the certificate                   |
-| `untrusted_chain`   | Could not build a chain to a trusted root in the local trust store  |
+Single static binary. No runtime dependencies.
 
-`untrusted_chain` does not distinguish "a missing intermediate" from "an unknown
-root". Use the JSON `chain_length` field to tell them apart: `chain_length: 1`
-means the server sent only the leaf, which strongly suggests a missing
-intermediate. certflow does **not** fetch missing intermediates (no AIA
-fetching) — that would mean connecting out to arbitrary URLs, which is outside
-the scope of a read-only inventory.
+## Usage
 
-The connection itself is still made **without** verification (see
-[Security](#security)); trust is assessed afterwards against the fetched
-certificate. That is what lets certflow inventory the expired, self-signed, and
-mismatched certificates you most need to find.
+```sh
+certflow example.co.jp                     # one host, port 443
+certflow example.co.jp:8443                # explicit port
+certflow smtp://mail.example.co.jp         # SMTP STARTTLS on 587
+certflow -file hosts.txt                   # a list
+certflow -file hosts.txt -warn 21          # warn at 21 days instead of 30
+certflow -file hosts.txt -json             # machine-readable
+certflow -file hosts.txt -fail-under 14    # exit 2 if anything expires within 14 days
+```
 
-### JSON fields
+### Targets
 
-JSON output (`-json`) includes everything in the table plus `subject`, `sans`,
-`serial`, `not_before`, and:
+A target is a hostname, optionally with a port, optionally with a scheme.
+**The service is inferred from the port**, so you rarely need the scheme:
 
-| Field               | Notes                                                          |
-| ------------------- | -------------------------------------------------------------- |
-| `trusted`           | `true`/`false`; omitted when a connection error made it undeterminable |
-| `untrusted_reasons` | Present only when `trusted` is `false`                         |
-| `tls_version`       | Same value as the `NEGOTIATED` column                          |
-| `cipher_suite`      | Negotiated cipher suite (JSON only — too long for the table)   |
-| `chain_length`      | Number of certificates the server presented                    |
+| You write | certflow does |
+| --- | --- |
+| `example.co.jp` | HTTPS on 443 |
+| `mail.example.co.jp:587` | **SMTP STARTTLS** (inferred from the port) |
+| `mail.example.co.jp:143` | **IMAP STARTTLS** |
+| `mail.example.co.jp:110` | **POP3 STLS** |
+| `mail.example.co.jp:993` | IMAPS (implicit TLS) |
+| `dir.example.co.jp:636` | LDAPS (implicit TLS) |
 
-### Limitations
+Schemes are there for when the port is non-standard, or you want to be explicit:
+`smtp://`, `smtps://`, `imap://`, `imaps://`, `pop3://`, `pop3s://`, `ldaps://`,
+`https://`.
 
-- **`NEGOTIATED` is a single agreement, not a capability report.** It is the TLS
-  version this one handshake settled on, not the server's full supported range.
-  Go disables TLS 1.0/1.1 by default, so those never appear here even if the
-  server would accept them.
-- **No AIA fetching.** Missing intermediates are reported, not fetched.
+### Flags
 
-> **Note (breaking change from earlier `v0.x`):** the `SUBJECT` column has been
-> removed from the table to make room for `TRUST` and `NEGOTIATED`. The
-> `subject` field is still present in `-json` output.
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-file` | — | File with one target per line (`#` comments ignored) |
+| `-warn` | `30` | Days-left threshold for `WARN` |
+| `-fail-under` | `0` | Exit 2 if any certificate expires within N days (0 = never) |
+| `-json` | `false` | JSON output instead of a table |
+| `-timeout` | `10s` | Per-target timeout |
+| `-concurrency` | `20` | Concurrent probes |
+| `-version` | — | Print version |
 
-## Roadmap
+### Exit codes
 
-| Phase | Scope                                                    | Risk |
-| ----- | -------------------------------------------------------- | ---- |
-| **0** | Read-only expiry inventory (**this release**)           | Low  |
-| 1     | ACME issuance for a single host (staging CA first)       | Med  |
-| 2     | Central issuance → distribute to hosts → reload services | High |
-| 3     | Policy, multiple CAs, dashboard (paid tier candidates)   | High |
+| Code | Meaning |
+| --- | --- |
+| `0` | Ran successfully |
+| `1` | Usage error (bad flags, unreadable file, no targets) |
+| `2` | `-fail-under` threshold breached — use this in cron and CI |
 
-Later phases build only on permissively licensed libraries (e.g. `lego`, MIT;
-`certmagic`, Apache-2.0). See [AGENTS.md](AGENTS.md) for the rules that govern
-how code is added to this project.
+## The columns
 
-## Security
+**`STATUS` and `TRUST` answer different questions.** Keeping them apart is
+deliberate.
 
-certflow does not require or store private keys. Please report vulnerabilities
-privately — see [SECURITY.md](SECURITY.md). Do not paste private keys or
-secrets into issues.
+- **`STATUS`** — is it expiring? `OK` / `WARN` / `EXPIRED` / `ERROR`
+- **`TRUST`** — would a normal client accept it? `yes` / `no` / `-`
 
-## Support
+A certificate can be valid for another 700 days *and* trusted by nothing:
 
-The project is free and MIT-licensed. Paid setup, integration, and operational
-support are available separately — see the repository's discussions or contact
-information for details.
+```console
+$ certflow self-signed.badssl.com expired.badssl.com
+STATUS   TRUST  SERVICE  NEGOTIATED  TARGET                      DAYS_LEFT  NOT_AFTER   ISSUER
+OK       no     tls      TLS1.3      self-signed.badssl.com:443  725        2028-07-06  CN=*.badssl.com,O=BadSSL…
+EXPIRED  no     tls      TLS1.2      expired.badssl.com:443      -4108      2015-04-12  CN=COMODO RSA Domain Val…
+2 targets: 1 OK, 0 WARN, 1 EXPIRED, 0 ERROR
+```
+
+Note that both certificates appear in the inventory at all. certflow *inspects*
+certificates rather than *trusting* them, so it can report on exactly the
+certificates a verifying client would refuse to talk to — which are the ones you
+most need to know about.
+
+`TRUST` is `-` when it could not be determined (the host was unreachable). That
+is not the same as "untrusted", and certflow does not conflate the two: a server
+that is simply down should not be reported as a TLS trust failure.
+
+When `TRUST` is `no`, `-json` carries the reason: `self_signed`,
+`hostname_mismatch`, `untrusted_chain`, `expired`.
+
+### A limit worth knowing
+
+**`NEGOTIATED` is the TLS version certflow and the server agreed on — not the
+full range the server supports.** A server shown as `TLS1.3` may happily accept
+TLS 1.0 from an older client. Go disables TLS 1.0/1.1 by default, so certflow
+never negotiates them and therefore cannot tell you whether the server would.
+
+To audit what a server actually permits, use a dedicated scanner such as
+[testssl.sh](https://github.com/drwetter/testssl.sh) or `sslscan`.
+
+## JSON output
+
+`-json` emits an array. Beyond the table columns it carries: `fingerprint`
+(SHA-256 of the DER — the same certificate on many hosts has the same
+fingerprint), `sans`, `self_signed`, `wildcard`, `public_key_algorithm`,
+`public_key_bits`, `signature_algorithm`, `cipher_suite`, `chain_length`,
+`untrusted_reasons`.
+
+```sh
+# Everything that is not trusted
+certflow -file hosts.txt -json | jq '.[] | select(.trusted == false)'
+
+# Weak keys
+certflow -file hosts.txt -json | jq '.[] | select(.public_key_bits < 2048)'
+
+# Which hosts share a certificate?
+certflow -file hosts.txt -json | jq -r '.[] | "\(.fingerprint[0:16]) \(.target)"' | sort
+```
+
+## In cron
+
+```cron
+# Every morning: mail me if anything expires within 14 days.
+0 8 * * * /usr/bin/certflow -file /etc/certflow/hosts.txt -fail-under 14 || \
+    mail -s "certflow: certificates expiring soon" ops@example.co.jp
+```
+
+Exit code 2 is what makes this work — no output parsing required.
+
+## Use it as a library
+
+The probe engine is a public package.
+
+```go
+import "github.com/toinet-lab/certflow/scan"
+
+t, err := scan.ParseTarget("smtp://mail.example.co.jp:587")
+if err != nil {
+    return err
+}
+r := scan.Probe(ctx, t, scan.Options{Timeout: 10 * time.Second})
+
+fmt.Println(r.Fingerprint, r.NotAfter, r.Trusted)
+```
+
+`Options.Roots` takes a custom `*x509.CertPool`, so you can evaluate trust
+against a private CA instead of the system store.
+
+## Why TLS verification is disabled
+
+`scan.Probe` connects with `InsecureSkipVerify`. This is deliberate, and it is
+the point of the tool.
+
+If certflow verified the certificate *during the handshake*, the connection would
+fail for exactly the certificates worth finding: the expired ones, the
+self-signed ones, the ones with the wrong hostname. You would be unable to
+inventory the problems you are looking for.
+
+So certflow connects without verifying, then **verifies the certificate it
+retrieved** — separately, against the system trust store — and reports the result
+in the `TRUST` column. Nothing is sent over the connection, and no action is
+taken on it.
+
+This is correct *here* because certflow only reads. **Do not copy the pattern
+into code that trusts or acts on a connection.**
+
+## Scope
+
+certflow stays a read-only inventory tool. It will not grow into a certificate
+manager: issuance, renewal, and deployment belong to a separate tool that imports
+this one as a library.
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+and [AGENTS.md](AGENTS.md) — the latter is the rule set for both human and AI
+contributors, and covers licensing, security, and the design invariants above.
+
+Security issues: see [SECURITY.md](SECURITY.md). Please report them privately.
+
+## Commercial support
+
+certflow is free and MIT-licensed, with no limits.
+
+Paid support is available — not only for certflow, but for the infrastructure it
+looks at: mail systems, directory services, DNS, and certificate operations on
+enterprise Linux.
 
 ## License
 
-[MIT](LICENSE) © 2026 Toinet
+MIT
