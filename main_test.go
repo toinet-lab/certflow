@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -129,5 +131,68 @@ func TestPrintSummary(t *testing.T) {
 				t.Errorf("printSummary()\n got: %q\nwant: %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// Inline comments (a '#' after the target on the same line) must be stripped, so
+// that "host:25   # note" parses as host:25 and not as a token with a broken
+// port. hosts.example.txt is written this way, so this is what makes the shipped
+// example actually work.
+func TestGatherTargetsStripsInlineComments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts.txt")
+	content := `# a whole-line comment
+example.co.jp
+mail.example.co.jp:25              # SMTP relay, STARTTLS
+smtp://smtp.example.co.jp:587      # submission
+
+   # indented comment
+example.co.jp                      # duplicate, different trailing comment
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	targets, err := gatherTargets(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"example.co.jp",
+		"mail.example.co.jp:25",
+		"smtp://smtp.example.co.jp:587",
+	}
+	if len(targets) != len(want) {
+		t.Fatalf("gatherTargets = %v, want %v", targets, want)
+	}
+	for i, w := range want {
+		if targets[i] != w {
+			t.Errorf("target[%d] = %q, want %q", i, targets[i], w)
+		}
+	}
+
+	// Every gathered target must actually parse — the whole point of the fix.
+	for _, tg := range targets {
+		if _, err := scan.ParseTarget(tg); err != nil {
+			t.Errorf("ParseTarget(%q): %v", tg, err)
+		}
+	}
+}
+
+// The shipped example file must work as-is: a first-time user copies it to
+// hosts.txt and runs certflow. Every non-comment line has to parse.
+func TestShippedHostsExampleParses(t *testing.T) {
+	targets, err := gatherTargets("hosts.example.txt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) == 0 {
+		t.Fatal("hosts.example.txt yielded no targets")
+	}
+	for _, tg := range targets {
+		if _, err := scan.ParseTarget(tg); err != nil {
+			t.Errorf("hosts.example.txt line %q does not parse: %v", tg, err)
+		}
 	}
 }
