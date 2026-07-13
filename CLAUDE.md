@@ -1,48 +1,38 @@
-# CLAUDE.md
-
-Project rules for Claude Code. Place this at the root of the `certflow` repo.
-
 @AGENTS.md
 
-The rules in AGENTS.md above are binding. The notes below are Claude Code specifics.
+## Using `gh`
 
-## Project
+`gh` is authenticated. Use it rather than asking me to click through the browser.
 
-**certflow** — a read-only TLS certificate inventory tool (Phase 0). Go, MIT licensed.
-
-## Commands
+Freely, without asking — these are reversible:
 
 ```sh
-gofmt -l .        # must print nothing
-go vet ./...
-go test ./...
-go build -o certflow .
+gh pr create --fill              # after pushing a branch
+gh pr checks --watch             # wait for CI and report the result
+gh pr diff                       # show me what changed
+gh run view --log-failed         # when CI fails, fetch the ACTUAL error
+gh issue list / gh issue view N
+gh pr comment N --body "..."     # e.g. "@dependabot rebase"
 ```
 
-Run all four before proposing that a change is done.
+Only after I approve, in this session, for this specific change:
 
-## Workflow
+```sh
+gh pr merge N --squash --delete-branch
+git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z
+gh release create / gh release edit
+```
 
-1. **Plan first.** For anything non-trivial, use plan mode and show me the plan.
-   Wait for my approval before editing code.
-2. **Branch, never `main`.** Create a branch, commit with `-s` (DCO sign-off),
-   open a pull request.
-3. **I merge, not you.** Never merge a PR, never tag, never publish a release.
-4. **Small PRs.** One logical change each.
-5. **Disclose AI authorship** in the PR description.
+**When CI fails, do not guess.** Run `gh run view --log-failed` and read the real
+error before proposing a fix. Guessing at CI failures has cost more time on this
+project than anything else.
 
-## Hard limits (repeated here because they matter most)
+## Reporting back
 
-- **Scope: Phase 0 only.** No issuance, no key generation, no key storage, no
-  writes to remote systems. Propose and get approval before expanding scope.
-- **No copyleft code.** No GPL/AGPL/LGPL. Do not read or copy from `acme.sh`
-  (GPL-3.0). For future ACME work, use `lego` (MIT) or `certmagic` (Apache-2.0).
-- **Never touch private keys or secrets.** Do not read, generate, log, print, or
-  commit them.
-- The single `InsecureSkipVerify` in `internal/scan/scan.go` is intentional (we
-  must be able to inspect expired/self-signed certs). Never copy that pattern
-  into code that *trusts* a connection.
+When you finish a piece of work, tell me:
 
-## If unsure
+1. what changed — and show me the diff,
+2. the result of each Required Check,
+3. the CI status,
 
-Stop and ask. Do not guess on scope, security, or licensing.
+then stop and wait. Do not proceed to merge.
