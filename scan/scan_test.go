@@ -36,6 +36,14 @@ func TestParseTarget(t *testing.T) {
 		{in: "smtp://mail.example.co.jp:2525", host: "mail.example.co.jp", port: 2525, service: ServiceSMTP},
 		{in: "  example.com  ", host: "example.com", port: 443, service: ServiceAuto},
 
+		// Inline comments: everything from '#' is a fragment and is cut, and the
+		// whitespace before it must not leak into the host or port. Without the
+		// trim, "example.co.jp    # x" returned host="example.co.jp    " and
+		// "host:25   # x" failed with "invalid port".
+		{in: "example.co.jp    # comment", host: "example.co.jp", port: 443, service: ServiceAuto},
+		{in: "mail.example.co.jp:25   # relay", host: "mail.example.co.jp", port: 25, service: ServiceAuto},
+		{in: "smtp://mail.example.co.jp:587  # submission", host: "mail.example.co.jp", port: 587, service: ServiceSMTP},
+
 		{in: "", wantErr: true},
 		{in: "gopher://example.com", wantErr: true},
 		{in: "example.com:99999", wantErr: true},

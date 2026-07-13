@@ -241,6 +241,11 @@ func ParseTarget(s string) (Target, error) {
 	if i := strings.IndexAny(s, "/?#"); i >= 0 {
 		s = s[:i]
 	}
+	// Trim again: cutting a path/query/fragment can leave trailing whitespace,
+	// e.g. "host:25   # comment" -> "host:25   ", whose spaces would otherwise be
+	// taken as part of the port ("invalid port") or the host ("host:443" with a
+	// trailing-space host that silently "succeeds").
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return Target{}, fmt.Errorf("empty host")
 	}
