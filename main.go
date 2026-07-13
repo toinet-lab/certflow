@@ -8,9 +8,12 @@
 // Usage:
 //
 //	certflow example.com example.org:443
-//	certflow -file hosts.txt
+//	certflow smtp://mail.example.co.jp imaps://mail.example.co.jp
 //	certflow -file hosts.txt -warn 21 -json
 //	certflow -file hosts.txt -fail-under 14   # exit code 2 if any cert < 14 days
+//
+// It speaks STARTTLS for SMTP, IMAP, and POP3, so it can inventory the mail and
+// directory certificates that HTTPS-only tools never look at.
 package main
 
 import (
@@ -27,7 +30,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/toinet-lab/certflow/internal/scan"
+	"github.com/toinet-lab/certflow/scan"
 )
 
 // version is overwritten at build time by GoReleaser via -ldflags.
@@ -159,10 +162,13 @@ func probeAll(targets []string, timeout time.Duration, concurrency int) []scan.R
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for t := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), timeout+2*time.Second)
-				out <- scan.Probe(ctx, t, timeout)
-				cancel()
+			for raw := range jobs {
+				t, err := scan.ParseTarget(raw)
+				if err != nil {
+					out <- scan.Result{Target: raw, Error: err.Error()}
+					continue
+				}
+				out <- scan.Probe(context.Background(), t, scan.Options{Timeout: timeout})
 			}
 		}()
 	}
@@ -188,15 +194,16 @@ func probeAll(targets []string, timeout time.Duration, concurrency int) []scan.R
 
 func printTable(w io.Writer, results []scan.Result, warn int) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "STATUS\tTRUST\tNEGOTIATED\tTARGET\tDAYS_LEFT\tNOT_AFTER\tISSUER")
+	fmt.Fprintln(tw, "STATUS\tTRUST\tSERVICE\tNEGOTIATED\tTARGET\tDAYS_LEFT\tNOT_AFTER\tISSUER")
 	for _, r := range results {
 		if r.Error != "" {
-			fmt.Fprintf(tw, "ERROR\t-\t-\t%s\t-\t-\t%s\n", r.Target, r.Error)
+			fmt.Fprintf(tw, "ERROR\t-\t%s\t-\t%s\t-\t-\t%s\n", serviceLabel(r), r.Target, r.Error)
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			status(r.DaysLeft, warn),
 			trustLabel(r),
+			serviceLabel(r),
 			r.TLSVersion,
 			r.Target,
 			r.DaysLeft,
@@ -251,6 +258,15 @@ func status(daysLeft, warn int) string {
 	default:
 		return "OK"
 	}
+}
+
+// serviceLabel renders the application protocol. This column is why certflow
+// can see mail and directory certificates that HTTPS-only tools miss.
+func serviceLabel(r scan.Result) string {
+	if r.Service == "" {
+		return "tls"
+	}
+	return string(r.Service)
 }
 
 func shorten(s string, n int) string {

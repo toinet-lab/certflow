@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/toinet-lab/certflow/internal/scan"
+	"github.com/toinet-lab/certflow/scan"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -20,8 +20,11 @@ func TestPrintTable(t *testing.T) {
 			Trusted: boolPtr(true), TLSVersion: "TLS1.3",
 		},
 		{
-			Target: "bad.example.com", DaysLeft: 5, NotAfter: notAfter,
-			Issuer: "CN=bad.example.com", Subject: "CN=bad.example.com",
+			// A mail server with a self-signed certificate: in date, but trusted
+			// by nothing. This is the case certflow exists to surface.
+			Target: "mail.example.co.jp:587", DaysLeft: 5, NotAfter: notAfter,
+			Service: scan.ServiceSMTP,
+			Issuer:  "CN=mail.example.co.jp", Subject: "CN=mail.example.co.jp",
 			Trusted: boolPtr(false), UntrustedReasons: []string{"self_signed"}, TLSVersion: "TLS1.2",
 		},
 		{Target: "dead.example.com", Error: "connection refused"},
@@ -33,7 +36,7 @@ func TestPrintTable(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 
 	header := lines[0]
-	for _, col := range []string{"STATUS", "TRUST", "NEGOTIATED", "TARGET", "DAYS_LEFT", "NOT_AFTER", "ISSUER"} {
+	for _, col := range []string{"STATUS", "TRUST", "SERVICE", "NEGOTIATED", "TARGET", "DAYS_LEFT", "NOT_AFTER", "ISSUER"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("header missing column %q: %q", col, header)
 		}
@@ -47,14 +50,15 @@ func TestPrintTable(t *testing.T) {
 		t.Errorf("table should not render SUBJECT, got:\n%s", out)
 	}
 
-	if fields := strings.Fields(lines[1]); fields[0] != "OK" || fields[1] != "yes" || fields[2] != "TLS1.3" {
-		t.Errorf("good row = %v, want STATUS=OK TRUST=yes NEGOTIATED=TLS1.3", fields)
+	// Columns: STATUS TRUST SERVICE NEGOTIATED TARGET DAYS_LEFT NOT_AFTER ISSUER
+	if f := strings.Fields(lines[1]); f[0] != "OK" || f[1] != "yes" || f[2] != "tls" || f[3] != "TLS1.3" {
+		t.Errorf("good row = %v, want STATUS=OK TRUST=yes SERVICE=tls NEGOTIATED=TLS1.3", f)
 	}
-	if fields := strings.Fields(lines[2]); fields[0] != "WARN" || fields[1] != "no" || fields[2] != "TLS1.2" {
-		t.Errorf("bad row = %v, want STATUS=WARN TRUST=no NEGOTIATED=TLS1.2", fields)
+	if f := strings.Fields(lines[2]); f[0] != "WARN" || f[1] != "no" || f[2] != "smtp" || f[3] != "TLS1.2" {
+		t.Errorf("bad row = %v, want STATUS=WARN TRUST=no SERVICE=smtp NEGOTIATED=TLS1.2", f)
 	}
-	if fields := strings.Fields(lines[3]); fields[0] != "ERROR" || fields[1] != "-" || fields[2] != "-" {
-		t.Errorf("error row = %v, want STATUS=ERROR TRUST=- NEGOTIATED=-", fields)
+	if f := strings.Fields(lines[3]); f[0] != "ERROR" || f[1] != "-" || f[3] != "-" {
+		t.Errorf("error row = %v, want STATUS=ERROR TRUST=- NEGOTIATED=-", f)
 	}
 }
 
