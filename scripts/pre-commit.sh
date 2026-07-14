@@ -12,10 +12,26 @@ EXCLUDE='^(\.gitleaks\.toml|scripts/pre-commit\.sh|scripts/install-hooks\.sh|AGE
 FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -vE "$EXCLUDE" || true)
 [ -z "$FILES" ] && exit 0
 
+# Two passes, because the case-sensitivity differs:
+#
+#   SECRETS (private keys) are matched case-INSENSITIVELY.
+#
+#   HOSTS/IPs are matched case-SENSITIVELY. Internal hostnames are lowercase by
+#   convention (dev-alma, foo.local); matching them case-insensitively also flags
+#   every PascalCase Go identifier ending in .Local/.Corp -- notably the stdlib
+#   `time.Local` -- a false positive that trains people to --no-verify. Matching
+#   lowercase only still catches the real thing (foo.local, dev-alma10-01.local)
+#   while ignoring Go identifiers. gitleaks in CI is the case-insensitive backstop.
+#
 # shellcheck disable=SC2086
-HITS=$(git diff --cached -- $FILES | grep -inE \
-  'BEGIN [A-Z ]*PRIVATE KEY|192\.168\.[0-9]|10\.[0-9]+\.[0-9]+\.[0-9]|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]|dev-alma|ansible-ctl|[a-z0-9-]+\.(local|internal|lan|corp)\b' \
+SECRETS=$(git diff --cached -- $FILES | grep -inE \
+  'BEGIN [A-Z ]*PRIVATE KEY' \
   || true)
+# shellcheck disable=SC2086
+HOSTS=$(git diff --cached -- $FILES | grep -nE \
+  '192\.168\.[0-9]|10\.[0-9]+\.[0-9]+\.[0-9]|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]|dev-alma|ansible-ctl|[a-z0-9-]+\.(local|internal|lan|corp)\b' \
+  || true)
+HITS=$(printf '%s\n%s\n' "$SECRETS" "$HOSTS" | grep -vE '^$' || true)
 
 if [ -n "$HITS" ]; then
     echo ""
