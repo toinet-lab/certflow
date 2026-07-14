@@ -18,7 +18,11 @@ tags = ["internal", "hostname"]
 [[rules]]
 id = "internal-hostname"
 description = "Internal hostname (use example.co.jp in code, tests, and docs)"
-regex = '''(?i)\b(?:dev-alma\S*|ansible-ctl\S*|[a-z0-9-]+\.(?:local|internal|lan|corp))\b'''
+# Case-SENSITIVE on purpose: internal hostnames are lowercase by convention. A
+# case-insensitive (?i) match also flagged PascalCase Go identifiers ending in
+# .Local/.Corp -- notably the stdlib time.Local / time.UTC -- a false positive
+# that trains people to --no-verify. Mirrors the fix in scripts/pre-commit.sh.
+regex = '''\b(?:dev-alma\S*|ansible-ctl\S*|[a-z0-9-]+\.(?:local|internal|lan|corp))\b'''
 tags = ["internal", "hostname"]
 
 [allowlist]
