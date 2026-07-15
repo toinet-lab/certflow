@@ -2,6 +2,7 @@ package scan
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -298,6 +299,66 @@ func TestIsSelfSignedRequiresSignatureCheck(t *testing.T) {
 	cert := testCert(t)
 	if !isSelfSigned(cert) {
 		t.Error("a genuinely self-signed certificate should be detected")
+	}
+}
+
+// Intermediates must be the presented chain MINUS the leaf, in the order the
+// server sent it, with the leaf never duplicated into it. That "intermediates
+// only" contract is the whole point of the field: certmgr reads it to find the
+// issuer for an OCSP check.
+func TestIntermediatesAreChainMinusLeafInOrder(t *testing.T) {
+	leaf := mkCert(t, "leaf.example.co.jp", 1)
+	inter1 := mkCert(t, "Intermediate CA 1", 2)
+	inter2 := mkCert(t, "Intermediate CA 2", 3)
+
+	var r Result
+	state := tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{leaf, inter1, inter2},
+	}
+	populate(&r, state, Target{Host: "leaf.example.co.jp", Port: 443}, Options{})
+
+	if r.ChainLength != 3 {
+		t.Fatalf("ChainLength = %d, want 3", r.ChainLength)
+	}
+	if len(r.Intermediates) != 2 {
+		t.Fatalf("len(Intermediates) = %d, want 2 (chain minus leaf)", len(r.Intermediates))
+	}
+
+	// Order preserved exactly as presented: inter1 then inter2.
+	if !bytes.Equal(r.Intermediates[0], inter1.Raw) {
+		t.Error("Intermediates[0] should be the first intermediate the server sent")
+	}
+	if !bytes.Equal(r.Intermediates[1], inter2.Raw) {
+		t.Error("Intermediates[1] should be the second intermediate the server sent")
+	}
+
+	// The leaf must NOT appear in Intermediates — it lives in DER, and repeating
+	// it here would defeat "intermediates only".
+	if !bytes.Equal(r.DER, leaf.Raw) {
+		t.Error("DER should hold the leaf")
+	}
+	for i, der := range r.Intermediates {
+		if bytes.Equal(der, leaf.Raw) {
+			t.Errorf("Intermediates[%d] is the leaf; the leaf must not be duplicated into Intermediates", i)
+		}
+	}
+}
+
+// A server that presents only a leaf (ChainLength == 1) yields no intermediates.
+func TestIntermediatesEmptyWhenOnlyLeafPresented(t *testing.T) {
+	leaf := mkCert(t, "leaf.example.co.jp", 1)
+
+	var r Result
+	state := tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{leaf},
+	}
+	populate(&r, state, Target{Host: "leaf.example.co.jp", Port: 443}, Options{})
+
+	if r.ChainLength != 1 {
+		t.Fatalf("ChainLength = %d, want 1", r.ChainLength)
+	}
+	if len(r.Intermediates) != 0 {
+		t.Errorf("Intermediates should be empty when only the leaf is presented, got %d", len(r.Intermediates))
 	}
 }
 

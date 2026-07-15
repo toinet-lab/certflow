@@ -165,6 +165,19 @@ type Result struct {
 	// output), but available to library callers that want to store or re-parse it.
 	DER []byte `json:"-"`
 
+	// Intermediates holds the intermediate certificates the server presented: the
+	// chain minus the leaf, each as raw DER, in the order the server sent them.
+	// certflow reports the wire fact and does not reorder or normalise. The leaf
+	// is in DER and is deliberately NOT repeated here, so "intermediates only" is
+	// literally what this holds. nil (length 0) when the server sent only a leaf
+	// (ChainLength == 1).
+	//
+	// Provided for library callers such as certmgr, whose OCSP path needs the
+	// issuer (intermediate CA) certificate. Like DER, it is not serialised to
+	// JSON — raw certificate bytes would bloat the output and no JSON consumer
+	// wants them.
+	Intermediates [][]byte `json:"-"`
+
 	Error string `json:"error,omitempty"`
 }
 
@@ -337,6 +350,16 @@ func populate(r *Result, state tls.ConnectionState, t Target, opts Options) {
 	sum := sha256.Sum256(leaf.Raw)
 	r.Fingerprint = hex.EncodeToString(sum[:])
 	r.DER = leaf.Raw
+
+	// Intermediates: the chain minus the leaf, in wire order, DER as sent. The
+	// leaf lives in DER; we do not repeat it here.
+	if len(certs) > 1 {
+		ints := make([][]byte, 0, len(certs)-1)
+		for _, c := range certs[1:] {
+			ints = append(ints, c.Raw)
+		}
+		r.Intermediates = ints
+	}
 
 	r.Subject = leaf.Subject.String()
 	r.Issuer = leaf.Issuer.String()
