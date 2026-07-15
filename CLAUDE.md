@@ -1,5 +1,17 @@
 @AGENTS.md
 
+## Language
+
+Talk to me in Japanese. Explanations, reports, and questions in our
+conversation should be written in Japanese.
+
+Keep the following in English, because they are public — certflow is a public
+repository — and they outlive the conversation:
+
+- code, comments, commit messages
+- documentation (README, AGENTS.md, ADRs)
+- pull request and issue bodies
+
 ## Using `gh`
 
 `gh` is authenticated. Use it rather than asking me to click through the browser.
