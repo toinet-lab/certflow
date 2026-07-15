@@ -9,8 +9,8 @@ A mail server does not show a browser warning. It just stops delivering mail,
 and you spend the afternoon working out why.
 
 certflow inventories the TLS certificates across your whole estate — **HTTPS,
-SMTP+STARTTLS, SMTPS, IMAP, IMAPS, POP3, POP3S, LDAPS** — and tells you when
-they expire.
+SMTP+STARTTLS, SMTPS, IMAP, IMAPS, POP3, POP3S, LDAPS, PostgreSQL,
+MySQL/MariaDB** — and tells you when they expire.
 
 ```console
 $ certflow smtp://smtp.example.co.jp:587 imaps://imap.example.co.jp example.co.jp
@@ -24,6 +24,13 @@ OK      yes    tls      TLS1.3      example.co.jp:443       48         2026-08-3
 **certflow only reads.** It never writes to a remote system, never generates or
 handles private keys, and never modifies anything. It opens a connection, reads
 the certificate the server presents, reports on it, and closes.
+
+The same blind spot covers your databases. A PostgreSQL or MySQL certificate
+expires and the application stops connecting with no browser warning — the same
+silent failure as mail. certflow speaks the PostgreSQL and MySQL/MariaDB TLS
+preambles too, so those certificates get inventoried like any other. It only ever
+starts the TLS handshake to read the certificate: it does not log in, run a
+query, or send a password, and it needs no database credentials.
 
 ## Install
 
@@ -73,10 +80,12 @@ A target is a hostname, optionally with a port, optionally with a scheme.
 | `mail.example.co.jp:110` | **POP3 STLS** |
 | `mail.example.co.jp:993` | IMAPS (implicit TLS) |
 | `dir.example.co.jp:636` | LDAPS (implicit TLS) |
+| `db.example.co.jp:5432` | **PostgreSQL** (in-band SSLRequest) |
+| `db.example.co.jp:3306` | **MySQL / MariaDB** (SSLRequest) |
 
 Schemes are there for when the port is non-standard, or you want to be explicit:
 `smtp://`, `smtps://`, `imap://`, `imaps://`, `pop3://`, `pop3s://`, `ldaps://`,
-`https://`.
+`postgres://` (or `postgresql://`), `mysql://` (or `mariadb://`), `https://`.
 
 ### Flags
 

@@ -7,9 +7,13 @@
 // # Not just HTTPS
 //
 // Most certificate tooling only looks at HTTPS. This package also speaks the
-// STARTTLS negotiation used by SMTP, IMAP, and POP3, because a mail server with
-// an expired certificate does not show a browser warning — it just stops
-// delivering mail. Those are the certificates that go unnoticed.
+// STARTTLS negotiation used by SMTP, IMAP, and POP3, and the TLS preambles used
+// by PostgreSQL and MySQL/MariaDB, because a mail server or database with an
+// expired certificate does not show a browser warning — it just stops delivering
+// mail, or stops accepting connections. Those are the certificates that go
+// unnoticed. The database preambles negotiate TLS before authentication, so no
+// credentials are needed: this package starts the handshake, reads the
+// certificate, and never logs in.
 //
 // # A deliberate InsecureSkipVerify
 //
@@ -62,6 +66,15 @@ const (
 
 	// ServicePOP3 is POP3 with STLS (110).
 	ServicePOP3 Service = "pop3"
+
+	// ServicePostgres is PostgreSQL, which negotiates TLS in-band via an
+	// SSLRequest message before authentication (5432).
+	ServicePostgres Service = "postgres"
+
+	// ServiceMySQL is MySQL/MariaDB, which advertises TLS in its initial
+	// handshake and switches to it via an SSLRequest packet (3306). MariaDB
+	// speaks the same wire protocol and is covered by this service.
+	ServiceMySQL Service = "mysql"
 )
 
 // Target is an endpoint to probe.
@@ -92,6 +105,10 @@ func (t Target) resolveService() Service {
 		return ServiceIMAP
 	case 110:
 		return ServicePOP3
+	case 5432:
+		return ServicePostgres
+	case 3306:
+		return ServiceMySQL
 	default:
 		// 443, 465, 636, 993, 995 and anything else: assume implicit TLS.
 		return ServiceTLS
@@ -212,6 +229,8 @@ func (o Options) timeout() time.Duration {
 //	imaps://mail.example.com    → :993, implicit TLS
 //	pop3s://mail.example.com    → :995, implicit TLS
 //	ldaps://dir.example.com     → :636, implicit TLS
+//	postgres://db.example.com   → :5432, PostgreSQL SSLRequest
+//	mysql://db.example.com      → :3306, MySQL/MariaDB SSLRequest
 //	https://example.com/        → :443, implicit TLS
 func ParseTarget(s string) (Target, error) {
 	s = strings.TrimSpace(s)
@@ -245,6 +264,10 @@ func ParseTarget(s string) (Target, error) {
 			service, defaultPort = ServiceTLS, 995
 		case "ldaps":
 			service, defaultPort = ServiceTLS, 636
+		case "postgres", "postgresql":
+			service, defaultPort = ServicePostgres, 5432
+		case "mysql", "mariadb":
+			service, defaultPort = ServiceMySQL, 3306
 		default:
 			return Target{}, fmt.Errorf("unknown scheme %q", scheme)
 		}
@@ -314,6 +337,13 @@ func Probe(ctx context.Context, t Target, opts Options) Result {
 	if err := startTLS(rawConn, svc); err != nil {
 		r.Error = fmt.Sprintf("starttls (%s): %v", svc, err)
 		return r
+	}
+
+	// A dialect may have adjusted the connection deadline during negotiation (the
+	// PostgreSQL path sets a short read deadline to check for buffer-stuffing).
+	// Restore the probe deadline before the TLS handshake.
+	if dl, ok := ctx.Deadline(); ok {
+		_ = rawConn.SetDeadline(dl)
 	}
 
 	// See the package doc: verification is deliberately off HERE, and performed
@@ -516,10 +546,12 @@ func asErr(err error, target any) bool {
 // --- STARTTLS ---------------------------------------------------------------
 
 // startTLS performs the plaintext negotiation that must precede the TLS
-// handshake for SMTP, IMAP, and POP3. For implicit-TLS services it does nothing.
+// handshake: the STARTTLS commands for SMTP, IMAP, and POP3, and the SSLRequest
+// preambles for PostgreSQL and MySQL/MariaDB (see db.go). For implicit-TLS
+// services it does nothing.
 //
-// This is the part almost no certificate tool implements, and it is why mail and
-// directory certificates go unmonitored.
+// This is the part almost no certificate tool implements, and it is why mail,
+// directory, and database certificates go unmonitored.
 func startTLS(conn net.Conn, svc Service) error {
 	switch svc {
 	case ServiceSMTP:
@@ -528,6 +560,10 @@ func startTLS(conn net.Conn, svc Service) error {
 		return startTLSIMAP(conn)
 	case ServicePOP3:
 		return startTLSPOP3(conn)
+	case ServicePostgres:
+		return startTLSPostgres(conn)
+	case ServiceMySQL:
+		return startTLSMySQL(conn)
 	default:
 		return nil // implicit TLS: handshake starts immediately
 	}
