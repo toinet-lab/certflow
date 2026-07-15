@@ -66,6 +66,11 @@ const (
 	// ServicePostgres is PostgreSQL, which negotiates TLS in-band via an
 	// SSLRequest message before authentication (5432).
 	ServicePostgres Service = "postgres"
+
+	// ServiceMySQL is MySQL/MariaDB, which advertises TLS in its initial
+	// handshake and switches to it via an SSLRequest packet (3306). MariaDB
+	// speaks the same wire protocol and is covered by this service.
+	ServiceMySQL Service = "mysql"
 )
 
 // Target is an endpoint to probe.
@@ -98,6 +103,8 @@ func (t Target) resolveService() Service {
 		return ServicePOP3
 	case 5432:
 		return ServicePostgres
+	case 3306:
+		return ServiceMySQL
 	default:
 		// 443, 465, 636, 993, 995 and anything else: assume implicit TLS.
 		return ServiceTLS
@@ -219,6 +226,7 @@ func (o Options) timeout() time.Duration {
 //	pop3s://mail.example.com    → :995, implicit TLS
 //	ldaps://dir.example.com     → :636, implicit TLS
 //	postgres://db.example.com   → :5432, PostgreSQL SSLRequest
+//	mysql://db.example.com      → :3306, MySQL/MariaDB SSLRequest
 //	https://example.com/        → :443, implicit TLS
 func ParseTarget(s string) (Target, error) {
 	s = strings.TrimSpace(s)
@@ -254,6 +262,8 @@ func ParseTarget(s string) (Target, error) {
 			service, defaultPort = ServiceTLS, 636
 		case "postgres", "postgresql":
 			service, defaultPort = ServicePostgres, 5432
+		case "mysql", "mariadb":
+			service, defaultPort = ServiceMySQL, 3306
 		default:
 			return Target{}, fmt.Errorf("unknown scheme %q", scheme)
 		}
@@ -546,6 +556,8 @@ func startTLS(conn net.Conn, svc Service) error {
 		return startTLSPOP3(conn)
 	case ServicePostgres:
 		return startTLSPostgres(conn)
+	case ServiceMySQL:
+		return startTLSMySQL(conn)
 	default:
 		return nil // implicit TLS: handshake starts immediately
 	}

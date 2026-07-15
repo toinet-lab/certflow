@@ -8,6 +8,7 @@ package scan
 // credentials are needed.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -101,4 +102,138 @@ func assertNoPendingBytes(conn net.Conn) error {
 		}
 		return fmt.Errorf("checking for pending bytes: %w", err)
 	}
+}
+
+// --- MySQL / MariaDB --------------------------------------------------------
+
+// MySQL capability flags we care about. CLIENT_SSL advertises TLS support;
+// CLIENT_PROTOCOL_41 selects the modern handshake and must be echoed in our
+// SSLRequest. See the MySQL client/server protocol documentation.
+const (
+	clientProtocol41 = 0x00000200
+	clientSSL        = 0x00000800
+)
+
+// startTLSMySQL performs the MySQL/MariaDB capability-flag TLS negotiation.
+//
+// Unlike PostgreSQL, the server speaks first: it sends an Initial Handshake
+// (HandshakeV10) advertising its capabilities. If the CLIENT_SSL bit is clear
+// the server cannot do TLS. Otherwise the client replies with an SSLRequest
+// packet — the first 32 bytes of a HandshakeResponse41, with CLIENT_SSL set and
+// nothing from the username onward — and the TLS handshake begins immediately.
+//
+// certflow never authenticates, so it parses only the capability flags and sends
+// no credentials.
+func startTLSMySQL(conn net.Conn) error {
+	payload, seq, err := readMySQLPacket(conn)
+	if err != nil {
+		return fmt.Errorf("initial handshake: %w", err)
+	}
+	caps, err := parseHandshakeCapabilities(payload)
+	if err != nil {
+		return err
+	}
+	if caps&clientSSL == 0 {
+		return fmt.Errorf("server does not support TLS (CLIENT_SSL not advertised)")
+	}
+	// The SSLRequest's sequence id is the server handshake's id + 1.
+	if _, err := conn.Write(mysqlSSLRequest(seq + 1)); err != nil {
+		return fmt.Errorf("SSLRequest: %w", err)
+	}
+	return nil
+}
+
+// readMySQLPacket reads exactly one MySQL protocol packet. The 4-byte header is a
+// 3-byte little-endian payload length plus a 1-byte sequence id. Reading exactly
+// the framed length with io.ReadFull means we never over-read into bytes that
+// will belong to the TLS handshake.
+func readMySQLPacket(conn net.Conn) (payload []byte, seq uint8, err error) {
+	var hdr [4]byte
+	if _, err = io.ReadFull(conn, hdr[:]); err != nil {
+		return nil, 0, fmt.Errorf("packet header: %w", err)
+	}
+	length := uint32(hdr[0]) | uint32(hdr[1])<<8 | uint32(hdr[2])<<16
+	seq = hdr[3]
+	if length == 0 {
+		return nil, seq, fmt.Errorf("empty packet")
+	}
+	payload = make([]byte, length)
+	if _, err = io.ReadFull(conn, payload); err != nil {
+		return nil, seq, fmt.Errorf("packet payload: %w", err)
+	}
+	return payload, seq, nil
+}
+
+// parseHandshakeCapabilities extracts the 32-bit capability flag set from a
+// HandshakeV10 payload. It parses ONLY as far as the capability flags — certflow
+// never authenticates, so auth-plugin data, plugin names, and the rest are
+// irrelevant.
+//
+// The 32-bit capability set is split by protocol history: the lower 16 bits sit
+// before the character-set/status fields, the upper 16 bits after. Both halves
+// are reassembled. CLIENT_SSL happens to live in the lower half, but the full
+// value is returned so the caller can echo a correct capability set.
+//
+// The MariaDB "5.5.5-" version prefix lives in the NUL-terminated server version
+// string, which is skipped, so it does not affect the result.
+func parseHandshakeCapabilities(payload []byte) (uint32, error) {
+	if len(payload) < 1 {
+		return 0, fmt.Errorf("handshake too short")
+	}
+	switch payload[0] {
+	case 0x0A:
+		// HandshakeV10 — the modern handshake we support.
+	case 0xFF:
+		return 0, fmt.Errorf("server returned an error packet instead of a handshake")
+	default:
+		return 0, fmt.Errorf("unsupported handshake protocol version 0x%02x", payload[0])
+	}
+
+	// server version: a NUL-terminated string starting at offset 1.
+	i := bytes.IndexByte(payload[1:], 0x00)
+	if i < 0 {
+		return 0, fmt.Errorf("handshake: unterminated server version")
+	}
+	off := 1 + i + 1 // move past the NUL
+
+	// connection id (4) + auth-plugin-data-part-1 (8) + filler (1) = 13 bytes.
+	off += 13
+	if off+2 > len(payload) {
+		return 0, fmt.Errorf("handshake: truncated before capability flags")
+	}
+	lower := binary.LittleEndian.Uint16(payload[off : off+2])
+	off += 2
+
+	// The upper 16 bits follow character set (1) + status flags (2). Older or
+	// minimal servers may stop after the lower half; then CLIENT_SSL (lower half)
+	// is still decidable.
+	var upper uint16
+	if off+5 <= len(payload) {
+		upper = binary.LittleEndian.Uint16(payload[off+3 : off+5])
+	}
+
+	return uint32(lower) | uint32(upper)<<16, nil
+}
+
+// mysqlSSLRequest builds the SSLRequest packet: the first 32 bytes of a
+// HandshakeResponse41 (client capabilities, max packet size, character set, 23
+// reserved zero bytes) framed with a 4-byte header. It sets CLIENT_SSL and
+// CLIENT_PROTOCOL_41 and stops before the username, so the server switches to
+// TLS without any authentication data.
+func mysqlSSLRequest(seq uint8) []byte {
+	const (
+		payloadLen    = 32
+		maxPacketSize = 16 * 1024 * 1024 // 16 MiB, a conventional client value
+		charsetUTF8   = 0x21             // utf8_general_ci; any valid id works
+	)
+	pkt := make([]byte, 4+payloadLen)
+	// Header: 3-byte little-endian payload length + sequence id.
+	pkt[0] = byte(payloadLen)
+	pkt[3] = seq
+	// Payload:
+	binary.LittleEndian.PutUint32(pkt[4:8], clientProtocol41|clientSSL)
+	binary.LittleEndian.PutUint32(pkt[8:12], maxPacketSize)
+	pkt[12] = charsetUTF8
+	// pkt[13:36] are the 23 reserved bytes, already zero.
+	return pkt
 }

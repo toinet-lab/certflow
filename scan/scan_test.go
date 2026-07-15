@@ -37,6 +37,8 @@ func TestParseTarget(t *testing.T) {
 		// Database endpoints negotiate TLS with a protocol-specific preamble.
 		{in: "postgres://db.example.co.jp", host: "db.example.co.jp", port: 5432, service: ServicePostgres},
 		{in: "postgresql://db.example.co.jp", host: "db.example.co.jp", port: 5432, service: ServicePostgres},
+		{in: "mysql://db.example.co.jp", host: "db.example.co.jp", port: 3306, service: ServiceMySQL},
+		{in: "mariadb://db.example.co.jp", host: "db.example.co.jp", port: 3306, service: ServiceMySQL},
 
 		{in: "smtp://mail.example.co.jp:2525", host: "mail.example.co.jp", port: 2525, service: ServiceSMTP},
 		{in: "  example.com  ", host: "example.com", port: 443, service: ServiceAuto},
@@ -85,6 +87,7 @@ func TestServiceInferredFromPort(t *testing.T) {
 		{143, ServiceIMAP},
 		{110, ServicePOP3},
 		{5432, ServicePostgres},
+		{3306, ServiceMySQL},
 		{443, ServiceTLS},
 		{465, ServiceTLS}, // SMTPS is implicit TLS, not STARTTLS
 		{993, ServiceTLS},
