@@ -9,8 +9,8 @@
 //
 //	certflow example.com example.org:443
 //	certflow smtp://mail.example.co.jp imaps://mail.example.co.jp
-//	certflow -file hosts.txt -warn 21 -json
-//	certflow -file hosts.txt -fail-under 14   # exit code 2 if any cert < 14 days
+//	certflow --file hosts.txt --warn 21 --json
+//	certflow --file hosts.txt --fail-under 14   # exit code 2 if any cert < 14 days
 //
 // It speaks STARTTLS for SMTP, IMAP, and POP3, so it can inventory the mail and
 // directory certificates that HTTPS-only tools never look at.
@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -60,7 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 	if len(targets) == 0 {
-		fmt.Fprintln(os.Stderr, "no targets given: use -file <path> or pass host:port arguments")
+		fmt.Fprintln(os.Stderr, "no targets given: use --file <path> or pass host:port arguments")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -97,15 +98,85 @@ func main() {
 	}
 }
 
-// usage prints the standard flag help plus a note on the limits of the
-// NEGOTIATED column, which reports only the version this run agreed on.
+// usage prints the flag help plus a note on the limits of the NEGOTIATED
+// column, which reports only the version this run agreed on.
 func usage() {
 	out := flag.CommandLine.Output()
 	fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
-	flag.PrintDefaults()
+	printDefaults(out, flag.CommandLine)
 	fmt.Fprintln(out, "\nNote: NEGOTIATED is the TLS version certflow agreed on for this")
 	fmt.Fprintln(out, "connection, not the server's full supported range. Go disables")
 	fmt.Fprintln(out, "TLS 1.0/1.1 by default, so those are never negotiated here.")
+}
+
+// printDefaults renders the flag defaults like flag.PrintDefaults, but spells
+// long options with a "--" prefix so help, docs, and errors all agree on the
+// "--name" convention. flag.PrintDefaults hardcodes a single "-", so a plain
+// string replacement is not safe (it would also rewrite hyphens in usage text
+// and default values); we walk the flags ourselves instead. A flag registered
+// with a one-character name renders as "-x"; the future convention for a
+// shorthand is to register the long name and mention "-x, --long" in its usage.
+//
+// The layout mirrors the standard library so output is familiar: two-space
+// indent, an optional value placeholder from UnquoteUsage, the usage text on
+// the same line for short entries or a tab-indented following line for long
+// ones, and a trailing "(default ...)" for non-zero defaults.
+func printDefaults(out io.Writer, fs *flag.FlagSet) {
+	fs.VisitAll(func(f *flag.Flag) {
+		var b strings.Builder
+		if len(f.Name) <= 1 {
+			fmt.Fprintf(&b, "  -%s", f.Name)
+		} else {
+			fmt.Fprintf(&b, "  --%s", f.Name)
+		}
+
+		name, usage := flag.UnquoteUsage(f)
+		if name != "" {
+			b.WriteString(" ")
+			b.WriteString(name)
+		}
+		// Four spaces or fewer of flag text: keep usage on the same line, padded
+		// with a tab. Otherwise wrap to a fresh tab-indented line. This matches
+		// flag.PrintDefaults' own heuristic.
+		if b.Len() <= 4 {
+			b.WriteString("\t")
+		} else {
+			b.WriteString("\n    \t")
+		}
+		b.WriteString(strings.ReplaceAll(usage, "\n", "\n    \t"))
+
+		if !isZeroFlagValue(f) {
+			// flag.PrintDefaults quotes string defaults and leaves the rest bare;
+			// mirror that so a string flag shows (default "value").
+			if isStringFlag(f) {
+				fmt.Fprintf(&b, " (default %q)", f.DefValue)
+			} else {
+				fmt.Fprintf(&b, " (default %v)", f.DefValue)
+			}
+		}
+		fmt.Fprint(out, b.String(), "\n")
+	})
+}
+
+// isStringFlag reports whether the flag holds a string, so its default is quoted
+// like flag.PrintDefaults does. The concrete type flag uses for string flags is
+// unexported, so we match it by type name.
+func isStringFlag(f *flag.Flag) bool {
+	return reflect.TypeOf(f.Value).String() == "*flag.stringValue"
+}
+
+// isZeroFlagValue reports whether the flag's default is the zero value for its
+// type, in which case no "(default ...)" is shown — exactly as
+// flag.PrintDefaults decides it, via a freshly constructed zero value.
+func isZeroFlagValue(f *flag.Flag) bool {
+	typ := reflect.TypeOf(f.Value)
+	var z reflect.Value
+	if typ.Kind() == reflect.Pointer {
+		z = reflect.New(typ.Elem())
+	} else {
+		z = reflect.Zero(typ)
+	}
+	return f.DefValue == z.Interface().(flag.Value).String()
 }
 
 // gatherTargets collects targets from CLI args and an optional file, skipping

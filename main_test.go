@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,46 @@ import (
 )
 
 func boolPtr(b bool) *bool { return &b }
+
+// printDefaults renders long options with a "--" prefix, one-char options with
+// "-", and suppresses "(default ...)" for zero-value flags — exactly like
+// flag.PrintDefaults otherwise.
+func TestPrintDefaultsUsesLongOptionPrefix(t *testing.T) {
+	fs := flag.NewFlagSet("certflow", flag.ContinueOnError)
+	fs.String("file", "", "path to a file with one host:port per line")
+	fs.Int("warn", 30, "days-left threshold to mark a certificate as WARN")
+	fs.Bool("json", false, "output results as JSON instead of a table")
+	fs.String("f", "", "short-form flag")
+
+	var buf bytes.Buffer
+	printDefaults(&buf, fs)
+	out := buf.String()
+
+	// Long options are spelled with "--".
+	for _, want := range []string{"--file", "--warn", "--json"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage should render %q, got:\n%s", want, out)
+		}
+	}
+	// A single-character flag keeps a single "-", and no long option is rendered
+	// with a bare single "-" (which would be the old flag.PrintDefaults style).
+	if !strings.Contains(out, "  -f") {
+		t.Errorf("one-char flag should render as -f, got:\n%s", out)
+	}
+	for _, bad := range []string{"  -file", "  -warn", "  -json"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("long option rendered with a single '-' (%q); should be '--', got:\n%s", bad, out)
+		}
+	}
+
+	// A non-zero default is shown; a zero-value default is not.
+	if !strings.Contains(out, "(default 30)") {
+		t.Errorf("non-zero default should be shown for --warn, got:\n%s", out)
+	}
+	if strings.Contains(out, "(default false)") || strings.Contains(out, `(default "")`) {
+		t.Errorf("zero-value defaults should be suppressed, got:\n%s", out)
+	}
+}
 
 func TestPrintTable(t *testing.T) {
 	notAfter := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
