@@ -54,10 +54,10 @@ Single static binary. No runtime dependencies.
 certflow example.co.jp                     # one host, port 443
 certflow example.co.jp:8443                # explicit port
 certflow smtp://mail.example.co.jp         # SMTP STARTTLS on 587
-certflow -file hosts.txt                   # a list
-certflow -file hosts.txt -warn 21          # warn at 21 days instead of 30
-certflow -file hosts.txt -json             # machine-readable
-certflow -file hosts.txt -fail-under 14    # exit 2 if anything expires within 14 days
+certflow --file hosts.txt                  # a list
+certflow --file hosts.txt --warn 21        # warn at 21 days instead of 30
+certflow --file hosts.txt --json           # machine-readable
+certflow --file hosts.txt --fail-under 14  # exit 2 if anything expires within 14 days
 ```
 
 ### Targets
@@ -82,13 +82,13 @@ Schemes are there for when the port is non-standard, or you want to be explicit:
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-file` | — | File with one target per line (`#` comments ignored) |
-| `-warn` | `30` | Days-left threshold for `WARN` |
-| `-fail-under` | `0` | Exit 2 if any certificate expires within N days (0 = never) |
-| `-json` | `false` | JSON output instead of a table |
-| `-timeout` | `10s` | Per-target timeout |
-| `-concurrency` | `20` | Concurrent probes |
-| `-version` | — | Print version |
+| `--file` | — | File with one target per line (`#` comments ignored) |
+| `--warn` | `30` | Days-left threshold for `WARN` |
+| `--fail-under` | `0` | Exit 2 if any certificate expires within N days (0 = never) |
+| `--json` | `false` | JSON output instead of a table |
+| `--timeout` | `10s` | Per-target timeout |
+| `--concurrency` | `20` | Concurrent probes |
+| `--version` | — | Print version |
 
 ### Exit codes
 
@@ -96,7 +96,7 @@ Schemes are there for when the port is non-standard, or you want to be explicit:
 | --- | --- |
 | `0` | Ran successfully |
 | `1` | Usage error (bad flags, unreadable file, no targets) |
-| `2` | `-fail-under` threshold breached — use this in cron and CI |
+| `2` | `--fail-under` threshold breached — use this in cron and CI |
 
 ## The columns
 
@@ -125,7 +125,7 @@ most need to know about.
 is not the same as "untrusted", and certflow does not conflate the two: a server
 that is simply down should not be reported as a TLS trust failure.
 
-When `TRUST` is `no`, `-json` carries the reason: `self_signed`,
+When `TRUST` is `no`, `--json` carries the reason: `self_signed`,
 `hostname_mismatch`, `untrusted_chain`, `expired`.
 
 ### A limit worth knowing
@@ -140,7 +140,7 @@ To audit what a server actually permits, use a dedicated scanner such as
 
 ## JSON output
 
-`-json` emits an array. Beyond the table columns it carries: `fingerprint`
+`--json` emits an array. Beyond the table columns it carries: `fingerprint`
 (SHA-256 of the DER — the same certificate on many hosts has the same
 fingerprint), `sans`, `self_signed`, `wildcard`, `public_key_algorithm`,
 `public_key_bits`, `signature_algorithm`, `cipher_suite`, `chain_length`,
@@ -148,20 +148,20 @@ fingerprint), `sans`, `self_signed`, `wildcard`, `public_key_algorithm`,
 
 ```sh
 # Everything that is not trusted
-certflow -file hosts.txt -json | jq '.[] | select(.trusted == false)'
+certflow --file hosts.txt --json | jq '.[] | select(.trusted == false)'
 
 # Weak keys
-certflow -file hosts.txt -json | jq '.[] | select(.public_key_bits < 2048)'
+certflow --file hosts.txt --json | jq '.[] | select(.public_key_bits < 2048)'
 
 # Which hosts share a certificate?
-certflow -file hosts.txt -json | jq -r '.[] | "\(.fingerprint[0:16]) \(.target)"' | sort
+certflow --file hosts.txt --json | jq -r '.[] | "\(.fingerprint[0:16]) \(.target)"' | sort
 ```
 
 ## In cron
 
 ```cron
 # Every morning: mail me if anything expires within 14 days.
-0 8 * * * /usr/bin/certflow -file /etc/certflow/hosts.txt -fail-under 14 || \
+0 8 * * * /usr/bin/certflow --file /etc/certflow/hosts.txt --fail-under 14 || \
     mail -s "certflow: certificates expiring soon" ops@example.co.jp
 ```
 
@@ -185,6 +185,12 @@ fmt.Println(r.Fingerprint, r.NotAfter, r.Trusted)
 
 `Options.Roots` takes a custom `*x509.CertPool`, so you can evaluate trust
 against a private CA instead of the system store.
+
+`Result.DER` holds the leaf's raw certificate, and `Result.Intermediates` holds
+the intermediate certificates the server presented — the chain minus the leaf,
+each as raw DER, in the order the server sent them. Both are for library callers
+(they are not in the JSON output). A caller doing an OCSP check reads
+`Intermediates` to find the issuer certificate.
 
 ## Why TLS verification is disabled
 
