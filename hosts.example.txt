@@ -25,6 +25,10 @@ pop3s://pop.example.co.jp          # implicit TLS on 995
 # --- Directory ---
 ldaps://ldap.example.co.jp         # implicit TLS on 636
 
+# --- Databases: expire and the app stops connecting, silently ---
+postgres://db.example.co.jp        # PostgreSQL SSLRequest on 5432
+db.example.co.jp:3306              # MySQL/MariaDB (inferred from the port)
+
 # --- Public test endpoints (useful for a first run) ---
 badssl.com
 expired.badssl.com

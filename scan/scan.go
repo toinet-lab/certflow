@@ -7,9 +7,13 @@
 // # Not just HTTPS
 //
 // Most certificate tooling only looks at HTTPS. This package also speaks the
-// STARTTLS negotiation used by SMTP, IMAP, and POP3, because a mail server with
-// an expired certificate does not show a browser warning — it just stops
-// delivering mail. Those are the certificates that go unnoticed.
+// STARTTLS negotiation used by SMTP, IMAP, and POP3, and the TLS preambles used
+// by PostgreSQL and MySQL/MariaDB, because a mail server or database with an
+// expired certificate does not show a browser warning — it just stops delivering
+// mail, or stops accepting connections. Those are the certificates that go
+// unnoticed. The database preambles negotiate TLS before authentication, so no
+// credentials are needed: this package starts the handshake, reads the
+// certificate, and never logs in.
 //
 // # A deliberate InsecureSkipVerify
 //
@@ -542,10 +546,12 @@ func asErr(err error, target any) bool {
 // --- STARTTLS ---------------------------------------------------------------
 
 // startTLS performs the plaintext negotiation that must precede the TLS
-// handshake for SMTP, IMAP, and POP3. For implicit-TLS services it does nothing.
+// handshake: the STARTTLS commands for SMTP, IMAP, and POP3, and the SSLRequest
+// preambles for PostgreSQL and MySQL/MariaDB (see db.go). For implicit-TLS
+// services it does nothing.
 //
-// This is the part almost no certificate tool implements, and it is why mail and
-// directory certificates go unmonitored.
+// This is the part almost no certificate tool implements, and it is why mail,
+// directory, and database certificates go unmonitored.
 func startTLS(conn net.Conn, svc Service) error {
 	switch svc {
 	case ServiceSMTP:

@@ -12,8 +12,9 @@
 //	certflow --file hosts.txt --warn 21 --json
 //	certflow --file hosts.txt --fail-under 14   # exit code 2 if any cert < 14 days
 //
-// It speaks STARTTLS for SMTP, IMAP, and POP3, so it can inventory the mail and
-// directory certificates that HTTPS-only tools never look at.
+// It speaks STARTTLS for SMTP, IMAP, and POP3, and the PostgreSQL and
+// MySQL/MariaDB TLS preambles, so it can inventory the mail, directory, and
+// database certificates that HTTPS-only tools never look at.
 package main
 
 import (
