@@ -50,7 +50,9 @@ Proposing them is welcome. Building them unasked is not.
 - `scan/` — **the public API.** The probe engine: connect, negotiate STARTTLS if
   needed, read the certificate, evaluate trust. Read the package doc first.
 - `main.go` — the CLI. A thin wrapper over `scan`.
-- `scripts/preflight-release.sh` — run before tagging.
+- `scripts/` — `install-hooks.sh` installs the local git hooks; `pre-commit.sh`
+  is the pre-commit guardrail check. Before tagging a release, run the Required
+  Checks (top of this file) and confirm CI is green.
 
 ## Design invariants — do not "fix" these
 
