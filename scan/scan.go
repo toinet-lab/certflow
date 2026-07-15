@@ -62,6 +62,10 @@ const (
 
 	// ServicePOP3 is POP3 with STLS (110).
 	ServicePOP3 Service = "pop3"
+
+	// ServicePostgres is PostgreSQL, which negotiates TLS in-band via an
+	// SSLRequest message before authentication (5432).
+	ServicePostgres Service = "postgres"
 )
 
 // Target is an endpoint to probe.
@@ -92,6 +96,8 @@ func (t Target) resolveService() Service {
 		return ServiceIMAP
 	case 110:
 		return ServicePOP3
+	case 5432:
+		return ServicePostgres
 	default:
 		// 443, 465, 636, 993, 995 and anything else: assume implicit TLS.
 		return ServiceTLS
@@ -212,6 +218,7 @@ func (o Options) timeout() time.Duration {
 //	imaps://mail.example.com    → :993, implicit TLS
 //	pop3s://mail.example.com    → :995, implicit TLS
 //	ldaps://dir.example.com     → :636, implicit TLS
+//	postgres://db.example.com   → :5432, PostgreSQL SSLRequest
 //	https://example.com/        → :443, implicit TLS
 func ParseTarget(s string) (Target, error) {
 	s = strings.TrimSpace(s)
@@ -245,6 +252,8 @@ func ParseTarget(s string) (Target, error) {
 			service, defaultPort = ServiceTLS, 995
 		case "ldaps":
 			service, defaultPort = ServiceTLS, 636
+		case "postgres", "postgresql":
+			service, defaultPort = ServicePostgres, 5432
 		default:
 			return Target{}, fmt.Errorf("unknown scheme %q", scheme)
 		}
@@ -314,6 +323,13 @@ func Probe(ctx context.Context, t Target, opts Options) Result {
 	if err := startTLS(rawConn, svc); err != nil {
 		r.Error = fmt.Sprintf("starttls (%s): %v", svc, err)
 		return r
+	}
+
+	// A dialect may have adjusted the connection deadline during negotiation (the
+	// PostgreSQL path sets a short read deadline to check for buffer-stuffing).
+	// Restore the probe deadline before the TLS handshake.
+	if dl, ok := ctx.Deadline(); ok {
+		_ = rawConn.SetDeadline(dl)
 	}
 
 	// See the package doc: verification is deliberately off HERE, and performed
@@ -528,6 +544,8 @@ func startTLS(conn net.Conn, svc Service) error {
 		return startTLSIMAP(conn)
 	case ServicePOP3:
 		return startTLSPOP3(conn)
+	case ServicePostgres:
+		return startTLSPostgres(conn)
 	default:
 		return nil // implicit TLS: handshake starts immediately
 	}
