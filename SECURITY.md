@@ -14,7 +14,7 @@ any report. A redacted description is enough to get started.
 
 ## Scope note
 
-certflow (Phase 0) is a read-only tool. It does not require, generate, or store
+CertRenova Probe (Phase 0) is a read-only tool. It does not require, generate, or store
 private keys, and it does not write to remote systems. If you find behavior
 that contradicts this, that itself is a security issue worth reporting.
 

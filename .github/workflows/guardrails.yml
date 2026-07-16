@@ -31,7 +31,7 @@ jobs:
       - name: go test
         run: go test ./...
       - name: go build
-        run: go build -o certflow .
+        run: go build -o certrenova-probe .
 
   # ---------------------------------------------------------------------------
   # 2. CodeQL — static security analysis (SAST). Reports to the Security tab.
@@ -134,4 +134,4 @@ jobs:
         uses: anchore/sbom-action@v0
         with:
           format: spdx-json
-          artifact-name: certflow.spdx.json
+          artifact-name: certrenova-probe.spdx.json

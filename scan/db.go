@@ -2,7 +2,7 @@ package scan
 
 // Database TLS dialects: PostgreSQL and MySQL/MariaDB negotiate TLS with a
 // protocol-specific preamble rather than the line-based STARTTLS commands of
-// SMTP/IMAP/POP3. certflow speaks just enough of each to reach the TLS handshake
+// SMTP/IMAP/POP3. CertRenova Probe speaks just enough of each to reach the TLS handshake
 // and read the certificate — it never authenticates, sends a query, or transmits
 // a password. Both protocols switch to TLS before authentication, so no database
 // credentials are needed.
@@ -122,7 +122,7 @@ const (
 // packet — the first 32 bytes of a HandshakeResponse41, with CLIENT_SSL set and
 // nothing from the username onward — and the TLS handshake begins immediately.
 //
-// certflow never authenticates, so it parses only the capability flags and sends
+// CertRenova Probe never authenticates, so it parses only the capability flags and sends
 // no credentials.
 func startTLSMySQL(conn net.Conn) error {
 	payload, seq, err := readMySQLPacket(conn)
@@ -165,7 +165,7 @@ func readMySQLPacket(conn net.Conn) (payload []byte, seq uint8, err error) {
 }
 
 // parseHandshakeCapabilities extracts the 32-bit capability flag set from a
-// HandshakeV10 payload. It parses ONLY as far as the capability flags — certflow
+// HandshakeV10 payload. It parses ONLY as far as the capability flags — CertRenova Probe
 // never authenticates, so auth-plugin data, plugin names, and the rest are
 // irrelevant.
 //

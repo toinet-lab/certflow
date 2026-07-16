@@ -14,7 +14,7 @@ body:
     id: proposal
     attributes:
       label: Proposed idea
-      description: What would you like certflow to do?
+      description: What would you like CertRenova Probe to do?
     validations:
       required: false
   - type: dropdown

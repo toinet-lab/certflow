@@ -1,12 +1,32 @@
 @AGENTS.md
 
+## Naming (fixed — do not waver)
+
+This repository was renamed from `certflow` to CertRenova Probe. Write the name
+consistently, the way `git`/`Git`, `docker`/`Docker`, and `postgres`/`PostgreSQL`
+are written:
+
+- **Brand / prose / titles:** `CertRenova Probe` (and the family name
+  `CertRenova`). Capital `C` and `R`, a space, and the role word `Probe` with a
+  capital `P`. Future family members follow the same rule: `CertRenova Renew`,
+  `CertRenova CA`.
+- **Command / binary / runnable examples:** `certrenova-probe` (and
+  `certrenova`). All lowercase, hyphenated.
+- **Code / import / module path:** `github.com/toinet-lab/certrenova-probe`. All
+  lowercase.
+
+Never write `CertRenova probe` (lowercase p), `certRenova`, `Certrenova`, or
+`Cert Renova`. The brand is always `CertRenova Probe`; the command is always
+`certrenova-probe`. The same rule applies to `certrenova` (formerly `certmgr`)
+and to any future product in the family.
+
 ## Language
 
 Talk to me in Japanese. Explanations, reports, and questions in our
 conversation should be written in Japanese.
 
-Keep the following in English, because they are public — certflow is a public
-repository — and they outlive the conversation:
+Keep the following in English, because they are public — CertRenova Probe is a
+public repository — and they outlive the conversation:
 
 - code, comments, commit messages
 - documentation (README, AGENTS.md, ADRs)

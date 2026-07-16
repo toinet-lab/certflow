@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/toinet-lab/certflow/scan"
+	"github.com/toinet-lab/certrenova-probe/scan"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -18,7 +18,7 @@ func boolPtr(b bool) *bool { return &b }
 // "-", and suppresses "(default ...)" for zero-value flags — exactly like
 // flag.PrintDefaults otherwise.
 func TestPrintDefaultsUsesLongOptionPrefix(t *testing.T) {
-	fs := flag.NewFlagSet("certflow", flag.ContinueOnError)
+	fs := flag.NewFlagSet("certrenova-probe", flag.ContinueOnError)
 	fs.String("file", "", "path to a file with one host:port per line")
 	fs.Int("warn", 30, "days-left threshold to mark a certificate as WARN")
 	fs.Bool("json", false, "output results as JSON instead of a table")
@@ -64,7 +64,7 @@ func TestPrintTable(t *testing.T) {
 		},
 		{
 			// A mail server with a self-signed certificate: in date, but trusted
-			// by nothing. This is the case certflow exists to surface.
+			// by nothing. This is the case CertRenova Probe exists to surface.
 			Target: "mail.example.co.jp:587", DaysLeft: 5, NotAfter: notAfter,
 			Service: scan.ServiceSMTP,
 			Issuer:  "CN=mail.example.co.jp", Subject: "CN=mail.example.co.jp",
@@ -222,7 +222,7 @@ example.co.jp                      # duplicate, different trailing comment
 }
 
 // The shipped example file must work as-is: a first-time user copies it to
-// hosts.txt and runs certflow. Every non-comment line has to parse.
+// hosts.txt and runs certrenova-probe. Every non-comment line has to parse.
 func TestShippedHostsExampleParses(t *testing.T) {
 	targets, err := gatherTargets("hosts.example.txt", nil)
 	if err != nil {
