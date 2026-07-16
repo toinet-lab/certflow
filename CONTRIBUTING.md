@@ -1,4 +1,4 @@
-# Contributing to certflow
+# Contributing to CertRenova Probe
 
 Thanks for your interest. A few rules keep this project safe to publish and
 safe to run.

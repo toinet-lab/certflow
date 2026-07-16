@@ -1,6 +1,6 @@
 # Compiled binary
-/certflow
-/certflow.exe
+/certrenova-probe
+/certrenova-probe.exe
 *.exe
 *.test
 *.out

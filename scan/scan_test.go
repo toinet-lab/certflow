@@ -74,7 +74,7 @@ func TestParseTarget(t *testing.T) {
 }
 
 // A bare host:port must infer the right service from the port, so that
-// "certflow mail.example.co.jp:587" does the STARTTLS dance without the user
+// "certrenova-probe mail.example.co.jp:587" does the STARTTLS dance without the user
 // having to know to ask for it.
 func TestServiceInferredFromPort(t *testing.T) {
 	cases := []struct {

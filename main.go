@@ -1,4 +1,4 @@
-// Command certflow is a read-only TLS certificate inventory tool (Phase 0).
+// Command certrenova-probe is a read-only TLS certificate inventory tool (Phase 0).
 //
 // It connects to each target, reads the certificate the server presents, and
 // prints when it expires. It never writes to remote systems and never touches
@@ -7,10 +7,10 @@
 //
 // Usage:
 //
-//	certflow example.com example.org:443
-//	certflow smtp://mail.example.co.jp imaps://mail.example.co.jp
-//	certflow --file hosts.txt --warn 21 --json
-//	certflow --file hosts.txt --fail-under 14   # exit code 2 if any cert < 14 days
+//	certrenova-probe example.com example.org:443
+//	certrenova-probe smtp://mail.example.co.jp imaps://mail.example.co.jp
+//	certrenova-probe --file hosts.txt --warn 21 --json
+//	certrenova-probe --file hosts.txt --fail-under 14   # exit code 2 if any cert < 14 days
 //
 // It speaks STARTTLS for SMTP, IMAP, and POP3, and the PostgreSQL and
 // MySQL/MariaDB TLS preambles, so it can inventory the mail, directory, and
@@ -32,7 +32,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/toinet-lab/certflow/scan"
+	"github.com/toinet-lab/certrenova-probe/scan"
 )
 
 // version is overwritten at build time by GoReleaser via -ldflags.
@@ -52,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("certflow", version)
+		fmt.Println("certrenova-probe", version)
 		return
 	}
 
@@ -105,7 +105,7 @@ func usage() {
 	out := flag.CommandLine.Output()
 	fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
 	printDefaults(out, flag.CommandLine)
-	fmt.Fprintln(out, "\nNote: NEGOTIATED is the TLS version certflow agreed on for this")
+	fmt.Fprintln(out, "\nNote: NEGOTIATED is the TLS version CertRenova Probe agreed on for this")
 	fmt.Fprintln(out, "connection, not the server's full supported range. Go disables")
 	fmt.Fprintln(out, "TLS 1.0/1.1 by default, so those are never negotiated here.")
 }
@@ -341,8 +341,8 @@ func status(daysLeft, warn int) string {
 	}
 }
 
-// serviceLabel renders the application protocol. This column is why certflow
-// can see mail and directory certificates that HTTPS-only tools miss.
+// serviceLabel renders the application protocol. This column is why CertRenova
+// Probe can see mail and directory certificates that HTTPS-only tools miss.
 func serviceLabel(r scan.Result) string {
 	if r.Service == "" {
 		return "tls"

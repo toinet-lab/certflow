@@ -21,7 +21,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: certflow version / commit
+      label: CertRenova Probe version / commit
     validations:
       required: false
   - type: markdown

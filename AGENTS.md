@@ -24,16 +24,16 @@ checks — it is a reason to run them.
 
 ## Project
 
-**certflow** — a read-only TLS certificate inventory tool. Go, MIT.
+**CertRenova Probe** — a read-only TLS certificate inventory tool. Go, MIT.
 
-certflow finds the certificates on your mail servers, not just your web servers.
+CertRenova Probe finds the certificates on your mail servers, not just your web servers.
 Certificate monitoring looks at HTTPS; meanwhile the certificate on an SMTP relay
 expires with no browser warning, and mail silently stops being delivered. Seeing
 those certificates is the point of this tool.
 
 ### Scope: read-only, and staying that way
 
-certflow **only reads.** It opens a connection, reads the certificate the server
+CertRenova Probe **only reads.** It opens a connection, reads the certificate the server
 presents, reports on it, and closes.
 
 Do NOT add, without explicit approval:
@@ -82,10 +82,10 @@ deliberate. Changing any of them silently breaks the tool.
    honest limitation rather than a guess.
 
 5. **Non-HTTPS is not a second-class path.** STARTTLS for SMTP/IMAP/POP3 is the
-   reason this tool exists. A change that makes certflow HTTPS-only, or treats
+   reason this tool exists. A change that makes CertRenova Probe HTTPS-only, or treats
    other services as an afterthought, is the wrong change.
 
-6. **`NEGOTIATED` must keep its caveat.** It reports the TLS version certflow and
+6. **`NEGOTIATED` must keep its caveat.** It reports the TLS version CertRenova Probe and
    the server *agreed on*, not the server's supported range. The README and `-h`
    both say so. Removing that caveat makes the tool lie.
 
@@ -107,7 +107,7 @@ implementation detail.
 2. **Never use `acme.sh` (GPL-3.0) as a reference** — not even for design
    sketches of future work. For ACME, use `lego` (MIT) or `certmagic`
    (Apache-2.0).
-3. **Prefer the standard library.** certflow currently has zero external
+3. **Prefer the standard library.** CertRenova Probe currently has zero external
    dependencies. Keep it that way unless there is a clear reason not to.
 4. **Every new dependency: check its licence and state it** in the PR.
 5. Cite the source and licence of any non-trivial borrowed logic.

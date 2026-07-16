@@ -2,16 +2,16 @@
 # Builds one static binary and packages it for RHEL (.rpm), Ubuntu/Debian
 # (.deb), and Alpine (.apk) in a single run.
 version: 2
-project_name: certflow
+project_name: certrenova-probe
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: certflow
+  - id: certrenova-probe
     main: .
-    binary: certflow
+    binary: certrenova-probe
     env:
       - CGO_ENABLED=0
     goos: [linux]
@@ -24,11 +24,11 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 nfpms:
-  - package_name: certflow
+  - package_name: certrenova-probe
     formats: [deb, rpm, apk]
     maintainer: "Toinet <302558825+toinet-lab@users.noreply.github.com>"
     description: "Read-only TLS certificate inventory tool."
-    homepage: "https://github.com/toinet-lab/certflow"
+    homepage: "https://github.com/toinet-lab/certrenova-probe"
     license: MIT
     bindir: /usr/bin
     file_name_template: "{{ .ConventionalFileName }}"
@@ -43,4 +43,4 @@ changelog:
 release:
   github:
     owner: toinet-lab
-    name: certflow
+    name: certrenova-probe

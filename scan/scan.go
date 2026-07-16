@@ -184,7 +184,7 @@ type Result struct {
 
 	// Intermediates holds the intermediate certificates the server presented: the
 	// chain minus the leaf, each as raw DER, in the order the server sent them.
-	// certflow reports the wire fact and does not reorder or normalise. The leaf
+	// CertRenova Probe reports the wire fact and does not reorder or normalise. The leaf
 	// is in DER and is deliberately NOT repeated here, so "intermediates only" is
 	// literally what this holds. nil (length 0) when the server sent only a leaf
 	// (ChainLength == 1).
@@ -572,7 +572,7 @@ func startTLS(conn net.Conn, svc Service) error {
 // startTLSSMTP: read the greeting, EHLO, then STARTTLS.
 //
 //	S: 220 mail.example.co.jp ESMTP
-//	C: EHLO certflow
+//	C: EHLO certrenova-probe
 //	S: 250-mail.example.co.jp
 //	S: 250 STARTTLS
 //	C: STARTTLS
@@ -583,7 +583,7 @@ func startTLSSMTP(conn net.Conn) error {
 	if err := expectSMTP(br, "220"); err != nil {
 		return fmt.Errorf("greeting: %w", err)
 	}
-	if _, err := fmt.Fprintf(conn, "EHLO certflow\r\n"); err != nil {
+	if _, err := fmt.Fprintf(conn, "EHLO certrenova-probe\r\n"); err != nil {
 		return err
 	}
 	if err := expectSMTP(br, "250"); err != nil {

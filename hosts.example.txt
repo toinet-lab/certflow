@@ -1,4 +1,4 @@
-# certflow target list.
+# CertRenova Probe target list.
 #
 # One target per line. Lines starting with # are ignored.
 #
